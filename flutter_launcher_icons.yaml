@@ -1,0 +1,22 @@
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+
+  android: "launcher_icon"
+  min_sdk_android: 21
+
+  ios: true
+  remove_alpha_ios: true
+
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"  # ✅ fix
+    background_color: "#0D3B2E"         # ✅ fix
+    theme_color: "#0D3B2E"              # ✅ fix
+
+  windows:
+    generate: false   # ✅ false કરો
+    image_path: "assets/icon/icon.png"
+
+  macos:
+    generate: false   # ✅ false કરો
+    image_path: "assets/icon/icon.png"

@@ -2,7 +2,7 @@ import 'package:doc_delete/utils/session_manager.dart';
 import 'package:flutter/material.dart';
 
 class CustomElevatedButton extends StatelessWidget {
-  final String text;
+  final String? text;
   final VoidCallback? onPressed;
   final Color? backgroundColor;
   final double height;
@@ -37,7 +37,7 @@ class CustomElevatedButton extends StatelessWidget {
         onPressed: onPressed,
 
         child: Text(
-          text,
+          text!,
           style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.bold),
         ),
       ),

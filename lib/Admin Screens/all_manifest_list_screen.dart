@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:doc_delete/Models/get_all_manifest_model.dart';
 import 'package:doc_delete/PDF/manifest_pdf.dart';
 import 'package:doc_delete/PDF/pdf_preview.dart';
+import 'package:doc_delete/Technician%20Screens/service_form_screen.dart';
 import 'package:doc_delete/Widgets/confirm_dialog.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -407,6 +408,24 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
   Widget _manifestCard(GetAllManifestModel m) {
     return GestureDetector(
       onTap: () async {
+        final manifest = await getManifestById(manifestId: m.manifestID);
+
+        if (manifest != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ServiceFormScreen(
+                isEdit: true,
+                existManifest: manifest,
+                technicianName: m.technicianName,
+              ),
+            ),
+          ).then((_) {
+            fetchAllManifests(); // 🔄 refresh after update
+          });
+        }
+      },
+      /*   onTap: () async {
         setState(() => isManifestLoading = true);
 
         final manifest = await getManifestById(manifestId: m.manifestID);
@@ -429,7 +448,7 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
         }
 
         setState(() => isManifestLoading = false);
-      },
+      },*/
       child: Container(
         margin: const EdgeInsets.only(bottom: 5),
         decoration: BoxDecoration(

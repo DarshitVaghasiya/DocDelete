@@ -9,9 +9,7 @@ class GetAllManifestModel {
   final String serviceDate;
   final String technicianName;
   final String? createdAt;
-
   final CustomerModel customer;
-
   final List<DepartmentModel1> departments;
   final List<ServiceItemModel> units;
   final List<String> photos;

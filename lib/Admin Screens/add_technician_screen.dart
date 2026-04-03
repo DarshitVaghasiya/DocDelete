@@ -4,6 +4,7 @@ import 'package:doc_delete/Models/technician_model.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_elevated_button.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
+import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/Widgets/custom_textformfield.dart';
 import 'package:doc_delete/Widgets/section_widget.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -114,119 +115,128 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
         title: widget.technician == null ? "Add Technician" : "Edit Technician",
       ),
 
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: SectionWidget(
-          icon: Icons.person,
-          title: "Technician Information",
-          child: Form(
-            key: _formKey,
-            child: Column(
-              children: [
-                textFormField(
-                  labelText: "Technician Name",
-                  controller: nameController,
-                  enabled: isEditing,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return "Technician Name required";
-                    }
-                    return null;
-                  },
-                ),
+      body: CustomRefresh(
+        onRefresh: existingTechnician,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: SectionWidget(
+            icon: Icons.person,
+            title: "Technician Information",
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  textFormField(
+                    labelText: "Technician Name",
+                    controller: nameController,
+                    enabled: isEditing,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Technician Name required";
+                      }
+                      return null;
+                    },
+                  ),
 
-                textFormField(
-                  labelText: "Address",
-                  controller: addressController,
-                  enabled: isEditing,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return "Address required";
-                    }
-                    return null;
-                  },
-                ),
+                  textFormField(
+                    labelText: "Address",
+                    controller: addressController,
+                    enabled: isEditing,
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Address required";
+                      }
+                      return null;
+                    },
+                  ),
 
-                textFormField(
-                  labelText: "Phone",
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  enabled: isEditing,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return "Phone required";
-                    }
-                    return null;
-                  },
-                ),
+                  textFormField(
+                    labelText: "Phone",
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    enabled: isEditing,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Phone required";
+                      }
+                      return null;
+                    },
+                  ),
 
-                textFormField(
-                  labelText: "Email",
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  enabled: isEditing,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return "Email required";
-                    }
-                    return null;
-                  },
-                ),
-                textFormField(
-                  labelText: "Password",
-                  controller: passwordController,
-                  keyboardType: TextInputType.visiblePassword,
-                  enabled: isEditing,
-                  obscureText: !isEditing,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return "Password required";
-                    }
-                    return null;
-                  },
-                ),
+                  textFormField(
+                    labelText: "Email",
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: isEditing,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Email required";
+                      }
+                      return null;
+                    },
+                  ),
+                  textFormField(
+                    labelText: "Password",
+                    controller: passwordController,
+                    keyboardType: TextInputType.visiblePassword,
+                    enabled: isEditing,
+                    obscureText: !isEditing,
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Password required";
+                      }
+                      return null;
+                    },
+                  ),
 
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomIconButton(
-                        label: "Generate Password",
-                        backgroundColor: isEditing
-                            ? AppColors.darkGreen
-                            : Colors.grey.shade400,
-                        textColor: isEditing ? AppColors.white : Colors.black45,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CustomIconButton(
+                          label: "Generate Password",
+                          backgroundColor: isEditing
+                              ? AppColors.darkGreen
+                              : Colors.grey.shade400,
+                          textColor: isEditing
+                              ? AppColors.white
+                              : Colors.black45,
 
-                        onTap: () {
-                          if (!isEditing) return;
-                          passwordController.text = generatePassword();
-                        },
+                          onTap: () {
+                            if (!isEditing) return;
+                            passwordController.text = generatePassword();
+                          },
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: CustomIconButton(
-                        label: "Share Password",
-                        borderColor: isEditing
-                            ? AppColors.black
-                            : AppColors.grey,
-                        textColor: isEditing ? AppColors.black : Colors.black45,
-                        onTap: () {
-                          if (!isEditing) return;
-                          if (nameController.text.isEmpty ||
-                              emailController.text.isEmpty ||
-                              passwordController.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Please fill technician details"),
-                              ),
-                            );
-                            return;
-                          }
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: CustomIconButton(
+                          label: "Share Password",
+                          borderColor: isEditing
+                              ? AppColors.black
+                              : AppColors.grey,
+                          textColor: isEditing
+                              ? AppColors.black
+                              : Colors.black45,
+                          onTap: () {
+                            if (!isEditing) return;
+                            if (nameController.text.isEmpty ||
+                                emailController.text.isEmpty ||
+                                passwordController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "Please fill technician details",
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
 
-                          String message =
-                              """
+                            String message =
+                                """
                               Technician Login Details
 
                               Name: ${nameController.text}
@@ -236,13 +246,14 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
                               Please keep this password secure.
                               """;
 
-                          Share.share(message);
-                        },
+                            Share.share(message);
+                          },
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:ui';
-import 'package:doc_delete/Admin%20Screens/admin_screen.dart';
+import 'package:doc_delete/Admin%20Screens/admin_dashboard_screen.dart';
 import 'package:doc_delete/Models/user_model.dart';
-import 'package:doc_delete/Technician%20Screens/dashboard_screen.dart';
+import 'package:doc_delete/Technician%20Screens/technician_dashboard_screen.dart';
 import 'package:doc_delete/config/api_urls.dart';
 import 'package:doc_delete/utils/session_manager.dart';
 import 'package:flutter/material.dart';

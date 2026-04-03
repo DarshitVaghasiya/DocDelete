@@ -12,6 +12,7 @@ import 'package:doc_delete/Screens/add_customer_screen.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_elevated_button.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
+import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/Widgets/custom_textformfield.dart';
 import 'package:doc_delete/Widgets/section_widget.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -71,6 +72,7 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
 
   String lastTapped = "";
   bool get isAdmin => loggedUser?.role == "admin";
+  int? editingIndex;
 
   /// CLIENT CONTROLLERS
   TextEditingController nameController = TextEditingController();
@@ -89,14 +91,13 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
   SignatureController customerController = SignatureController(
     penStrokeWidth: 3,
   );
-
   SignatureController techController = SignatureController(penStrokeWidth: 3);
-
   SignatureController adminController = SignatureController(penStrokeWidth: 3);
 
-  Uint8List? customerSignBytes;
-  Uint8List? techSignBytes;
-  Uint8List? adminSignBytes;
+  // ✅ String — no decode, no freeze
+  String? customerSignBase64;
+  String? techSignBase64;
+  String? adminSignBase64;
 
   @override
   void initState() {
@@ -125,12 +126,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
 
   Future<void> loadUser() async {
     final user = await SessionManager.getUser();
-
     if (!mounted) return;
-
-    setState(() {
-      loggedUser = user;
-    });
+    setState(() => loggedUser = user);
   }
 
   Future<void> setExistingData() async {
@@ -146,14 +143,9 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     selectedDate = DateTime.parse(m.serviceDate);
     dateController.text = DateFormat('MMMM d, yyyy').format(selectedDate);
 
-    /// ✅ DROPDOWN SELECT (IMPORTANT)
+    /// ✅ DROPDOWN SELECT
     final match = customer.where((c) => c.id == m.customer.id).toList();
-
-    if (match.isNotEmpty) {
-      selectedClient = match.first;
-    } else {
-      selectedClient = null; // 🔥 IMPORTANT
-    }
+    selectedClient = match.isNotEmpty ? match.first : null;
 
     /// ✅ SERVICE ITEMS
     serviceItems = m.units.map((item) {
@@ -166,32 +158,14 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       );
     }).toList();
 
-    /// ✅ SERVICE TYPE CHECKBOXES
-    for (var item in m.units) {
-      if (item.serviceType.contains("DOCUMENT DESTRUCTION")) {
-        destruction = true;
-      }
-      if (item.serviceType.contains("DOCUMENT STORAGE")) {
-        storage = true;
-      }
-      if (item.serviceType.contains("E-WASTE")) {
-        eWaste = true;
-      }
-      if (item.serviceType.contains("SERVICE DELIVERY TICKET")) {
-        serviceTicket = true;
-      }
-    }
     departments = selectedClient?.departments ?? [];
 
-    /// ✅ PHOTOS (existing show karva hoy to)
-    // NOTE: aa URL hoy to network image use karvu pade
-    // currently tame skip kari sako cho
-    if (m.customerSign!.isNotEmpty) {
-      customerSignBytes = base64Decode(m.customerSign!);
+    // ✅ No base64Decode — directly String assign, zero freeze
+    if (m.customerSign != null && m.customerSign!.isNotEmpty) {
+      customerSignBase64 = m.customerSign;
     }
-
-    if (m.technicianSign!.isNotEmpty) {
-      techSignBytes = base64Decode(m.technicianSign!);
+    if (m.technicianSign != null && m.technicianSign!.isNotEmpty) {
+      techSignBase64 = m.technicianSign;
     }
 
     showCustomerSignature = true;
@@ -211,10 +185,12 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
 
         if (json["status"] == true) {
           final data = json["data"];
-
           customer = (data["customers"] as List)
               .map((e) => CustomerModel.fromJson(e))
               .toList();
+          customer.sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
         }
       }
     } catch (e) {
@@ -254,19 +230,16 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     }
 
     List<String> types = [];
-
     if (destruction) types.add("DOCUMENT DESTRUCTION");
     if (storage) types.add("DOCUMENT STORAGE");
     if (eWaste) types.add("E-WASTE");
     if (serviceTicket) types.add("SERVICE DELIVERY TICKET");
-    if (customController.text.isNotEmpty) {
-      types.add(customController.text);
-    }
+    if (customController.text.isNotEmpty) types.add(customController.text);
 
     String serviceType = types.join(", ");
 
     ServiceItemModel item = ServiceItemModel(
-      departmentId: selectedDepartment!.id!, // ✅ FIX
+      departmentId: selectedDepartment!.id!,
       unitType: unitType!,
       measure: measureController.text,
       quantity: quantityController.text,
@@ -274,13 +247,79 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     );
 
     setState(() {
-      serviceItems.add(item);
+      if (editingIndex != null) {
+        // ✅ Update existing item
+        serviceItems[editingIndex!] = item;
+        editingIndex = null; // reset
+      } else {
+        // ✅ Add new item
+        serviceItems.add(item);
+      }
+
+      // ✅ Clear all fields
+      unitType = null;
+      boxSize = null;
+      measureController.clear();
+      quantityController.clear();
+      selectedDepartment = null;
+      customController.clear();
+      destruction = false;
+      storage = false;
+      eWaste = false;
+      serviceTicket = false;
+    });
+  }
+
+  void loadItemForEdit(int index) {
+    final item = serviceItems[index];
+
+    setState(() {
+      editingIndex = index;
+
+      // ✅ બધી values fill કરો
+      unitType = item.unitType;
+      measureController.text = item.measure;
+      quantityController.text = item.quantity;
+
+      // ✅ Department select કરો
+      final match = departments
+          .where((d) => d.id == item.departmentId)
+          .toList();
+      selectedDepartment = match.isNotEmpty ? match.first : null;
+
+      // ✅ Service type checkboxes set કરો
+      destruction = item.serviceType.contains("DOCUMENT DESTRUCTION");
+      storage = item.serviceType.contains("DOCUMENT STORAGE");
+      eWaste = item.serviceType.contains("E-WASTE");
+      serviceTicket = item.serviceType.contains("SERVICE DELIVERY TICKET");
+
+      // ✅ Custom description
+      final knownTypes = [
+        "DOCUMENT DESTRUCTION",
+        "DOCUMENT STORAGE",
+        "E-WASTE",
+        "SERVICE DELIVERY TICKET",
+      ];
+      final custom = item.serviceType
+          .split(", ")
+          .where((t) => !knownTypes.contains(t))
+          .join(", ");
+      customController.text = custom;
+
+      // ✅ Box size handle
+      if (item.unitType == "BOXES") {
+        boxSize = item.measure;
+      }
     });
 
-    unitType = null;
-    measureController.clear();
-    quantityController.clear();
-    selectedDepartment = null;
+    // ✅ Scroll to top of service section — optional
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Item loaded for editing"),
+        backgroundColor: AppColors.darkGreen,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> takeImage(ImageSource source) async {
@@ -345,10 +384,8 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       minWidth: 800,
       minHeight: 800,
     );
-
     final compressedBytes = result ?? originalBytes;
-    final base64String = base64Encode(compressedBytes);
-    return base64String;
+    return base64Encode(compressedBytes);
   }
 
   Future<List<String>> buildPhotos() async {
@@ -357,29 +394,21 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     for (var photo in photos) {
       try {
         if (photo is File) {
-          print("📸 File: ${photo.path}");
-
           final base64 = await compressAndEncodeImage(photo.path);
           list.add(base64);
         } else if (photo is Uint8List) {
-          /// 🟢 COMPRESS
           final compressedBytes = await FlutterImageCompress.compressWithList(
             photo,
-            quality: 50, // 🔥 try 40–60
+            quality: 50,
             minWidth: 800,
             minHeight: 800,
           );
-
-          /// 🟡 BASE64 SIZE
-          final base64String = base64Encode(compressedBytes);
-          list.add(base64String);
-        }
-        /// ❌ UNKNOWN TYPE
-        else {
-          print("❌ Unknown type: ${photo.runtimeType}");
+          list.add(base64Encode(compressedBytes));
+        } else {
+          debugPrint("❌ Unknown type: ${photo.runtimeType}");
         }
       } catch (e) {
-        print("❌ Error: $e");
+        debugPrint("❌ Error: $e");
       }
       await Future.delayed(const Duration(milliseconds: 50));
     }
@@ -404,7 +433,31 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     }
   }
 
-  void handleResponse(http.Response response) {
+  Future<GetAllManifestModel?> getManifestById({
+    required int manifestId,
+  }) async {
+    int? adminID = await SessionManager.getUserId();
+    final response = await http.get(
+      Uri.parse(
+        "${ApiUrls.getAllManifest}?is_admin=$adminID&manifest_id=$manifestId",
+      ),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['status'] == true && data['data'] != null) {
+        if (data['data'] is List) {
+          final list = data['data'] as List;
+          if (list.isNotEmpty) return GetAllManifestModel.fromJson(list[0]);
+        } else if (data['data'] is Map) {
+          return GetAllManifestModel.fromJson(data['data']);
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> handleResponse(http.Response response) async {
     final data = jsonDecode(response.body);
 
     if (response.statusCode == 200 && data["status"] == true) {
@@ -419,7 +472,35 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
           behavior: SnackBarBehavior.floating,
         ),
       );
-      Navigator.pop(context, true);
+
+      /// ✅ Admin edit complete → direct PDF open
+      if (widget.isEdit && isAdmin && widget.existManifest != null) {
+        setState(() {
+          isPageLoading = true;
+        });
+        final manifest = await getManifestById(
+          manifestId: widget.existManifest!.manifestID,
+        );
+
+        if (manifest == null) {
+          setState(() => isPageLoading = false);
+          return;
+        }
+        final bytes = await generateManifestPdf(
+          manifest,
+          technicianName: widget.existManifest!.technicianName,
+        );
+        setState(() {
+          isPageLoading = false;
+        });
+        Navigator.pop(context, true);
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => WebPdfViewerScreen(bytes: bytes)),
+        );
+      } else {
+        Navigator.pop(context, true);
+      }
     } else {
       showError(data["message"] ?? "Something went wrong");
     }
@@ -462,17 +543,41 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       showError("Technician not found");
       return;
     }
+
+    String? customerSign;
+    String? techSign;
+    String? adminSign;
+
+    if (isAdmin) {
+      customerSign = customerSignBase64;
+      techSign = techSignBase64;
+      adminSign = adminController.isNotEmpty
+          ? await getSignatureBase64(adminController)
+          : null;
+    } else {
+      // ✅ Technician — new sign OR existing base64 directly
+      customerSign = customerController.isNotEmpty
+          ? await getSignatureBase64(customerController)
+          : customerSignBase64;
+
+      techSign = techController.isNotEmpty
+          ? await getSignatureBase64(techController)
+          : techSignBase64;
+
+      adminSign = null;
+    }
+
     final request = ManifestModel(
-      id: widget.existManifest?.manifestID, // 🔥 IMPORTANT
+      id: widget.existManifest?.manifestID,
       technicianId: technicianId,
       customerId: selectedClient?.id,
       customerName: nameController.text,
       serviceDate: selectedDate.toString(),
       serviceItems: serviceItems,
       images: images,
-      customerSign: await getSignatureBase64(customerController),
-      technicianSign: await getSignatureBase64(techController),
-      adminSign: await getSignatureBase64(adminController),
+      customerSign: customerSign,
+      technicianSign: techSign,
+      adminSign: adminSign,
     );
 
     final response = await http.put(
@@ -492,31 +597,20 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
 
     try {
       if (widget.isEdit) {
-        await updateManifest(); // 🔥 UPDATE
+        await updateManifest();
       } else {
-        await createManifest(); // 🔥 CREATE
+        await createManifest();
       }
     } catch (e) {
       showError("Error: $e");
     } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   bool validateForm() {
     if (nameController.text.isEmpty) {
       showError("Please add customer name");
-      return false;
-    }
-
-    if (!destruction &&
-        !storage &&
-        !eWaste &&
-        !serviceTicket &&
-        customController.text.isEmpty) {
-      showError("Please select at least one service type");
       return false;
     }
 
@@ -530,19 +624,22 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       return false;
     }
 
-    // ✅ Admin edit mode ma sirf admin sign validate karvo
     if (widget.isEdit && isAdmin) {
       if (adminController.isEmpty) {
         showError("Please add admin signature");
         return false;
       }
     } else {
-      // ✅ Normal mode ma customer + tech sign validate karva
-      if (customerController.isEmpty) {
+      // ✅ String null check
+      final hasCustomerSign =
+          customerController.isNotEmpty || customerSignBase64 != null;
+      if (!hasCustomerSign) {
         showError("Please add customer signature");
         return false;
       }
-      if (techController.isEmpty) {
+
+      final hasTechSign = techController.isNotEmpty || techSignBase64 != null;
+      if (!hasTechSign) {
         showError("Please add technician signature");
         return false;
       }
@@ -563,303 +660,243 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
             )
           : Stack(
               children: [
-                SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      /// CLIENT INFORMATION
-                      SectionWidget(
-                        title: "Client Information",
-                        icon: Icons.people_outlined,
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<CustomerModel>(
-                                    isExpanded: true,
-                                    value: customer.isEmpty
-                                        ? null
-                                        : selectedClient, // 🔥 fix
-                                    dropdownColor: AppColors.white,
-                                    decoration: InputDecoration(
-                                      labelText: "Select Customer / Company",
-                                      filled: true,
-                                      fillColor: Colors.grey.shade100,
-                                      labelStyle: TextStyle(
-                                        color: AppColors.black,
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.all(
-                                          Radius.circular(8),
+                CustomRefresh(
+                  onRefresh: fetchServiceFormData,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        /// CLIENT INFORMATION
+                        SectionWidget(
+                          title: "Client Information",
+                          icon: Icons.people_outlined,
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child:
+                                        DropdownButtonFormField<CustomerModel>(
+                                          isExpanded: true,
+                                          value: customer.isEmpty
+                                              ? null
+                                              : selectedClient,
+                                          dropdownColor: AppColors.white,
+                                          decoration: InputDecoration(
+                                            labelText:
+                                                "Select Customer / Company",
+                                            filled: true,
+                                            fillColor: Colors.grey.shade100,
+                                            labelStyle: TextStyle(
+                                              color: AppColors.black,
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.all(
+                                                Radius.circular(8),
+                                              ),
+                                              borderSide: BorderSide(
+                                                color: AppColors.black,
+                                              ),
+                                            ),
+                                            focusedBorder:
+                                                const OutlineInputBorder(
+                                                  borderRadius:
+                                                      BorderRadius.all(
+                                                        Radius.circular(8),
+                                                      ),
+                                                  borderSide: BorderSide(
+                                                    color: AppColors.black,
+                                                    width: 1.2,
+                                                  ),
+                                                ),
+                                          ),
+                                          hint: Text(
+                                            customer.isEmpty
+                                                ? "No customers available"
+                                                : "Select Customer / Company",
+                                            style: const TextStyle(
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                          items: customer.map((client) {
+                                            return DropdownMenuItem(
+                                              value: client,
+                                              child: Text(client.name),
+                                            );
+                                          }).toList(),
+                                          onChanged: customer.isEmpty
+                                              ? null
+                                              : (client) {
+                                                  setState(() {
+                                                    selectedClient = client;
+                                                    addressController.text =
+                                                        AddressFormatter.format(
+                                                          client?.address ?? "",
+                                                        );
+                                                    contactController.text =
+                                                        client?.contactPerson ??
+                                                        "";
+                                                    phoneController.text =
+                                                        client?.phone ?? "";
+                                                    emailController.text =
+                                                        client?.email ?? "";
+                                                    selectedDepartment = null;
+                                                    departments =
+                                                        client?.departments ??
+                                                        [];
+                                                  });
+                                                },
                                         ),
-                                        borderSide: BorderSide(
-                                          color: AppColors.black,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  CustomIconButton(
+                                    icon: Icons.add,
+                                    label: "ADD",
+                                    backgroundColor: AppColors.darkGreen,
+                                    textColor: AppColors.white,
+                                    onTap: () async {
+                                      final result = await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              const AddCustomerScreen(),
                                         ),
-                                      ),
-                                      focusedBorder: const OutlineInputBorder(
-                                        borderRadius: BorderRadius.all(
-                                          Radius.circular(8),
-                                        ),
-                                        borderSide: BorderSide(
-                                          color: AppColors.black,
-                                          width: 1.2,
-                                        ),
-                                      ),
-                                    ),
-
-                                    hint: Text(
-                                      customer.isEmpty
-                                          ? "No customers available"
-                                          : "Select Customer / Company",
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-
-                                    items: customer.map((client) {
-                                      return DropdownMenuItem(
-                                        value: client,
-                                        child: Text(client.name),
                                       );
-                                    }).toList(),
-
-                                    onChanged: customer.isEmpty
-                                        ? null // 🔥 disable dropdown
-                                        : (client) {
-                                            setState(() {
-                                              selectedClient = client;
-
-                                              addressController.text =
-                                                  AddressFormatter.format(
-                                                    client?.address ?? "",
-                                                  );
-                                              contactController.text =
-                                                  client?.contactPerson ?? "";
-                                              phoneController.text =
-                                                  client?.phone ?? "";
-                                              emailController.text =
-                                                  client?.email ?? "";
-
-                                              selectedDepartment = null;
-                                              departments =
-                                                  client?.departments ?? [];
-                                            });
-                                          },
+                                      if (result != null &&
+                                          result is CustomerModel) {
+                                        setState(() => customer.add(result));
+                                      }
+                                    },
                                   ),
-                                ),
-
-                                const SizedBox(width: 10),
-
-                                CustomIconButton(
-                                  icon: Icons.add,
-                                  label: "ADD",
-                                  backgroundColor: AppColors.darkGreen,
-                                  textColor: AppColors.white,
-
-                                  onTap: () async {
-                                    final result = await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const AddCustomerScreen(),
-                                      ),
-                                    );
-
-                                    if (result != null &&
-                                        result is CustomerModel) {
-                                      setState(() {
-                                        customer.add(result); // 🔥 add locally
-                                      });
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 20),
-
-                            textFormField(
-                              labelText: "Customer Name",
-                              controller: nameController,
-                              onChanged: (val) {
-                                setState(() {});
-                              },
-                            ),
-
-                            textFormField(
-                              labelText: "Address",
-                              controller: addressController,
-                              maxLines: null,
-                              keyboardType: TextInputType.multiline,
-                            ),
-
-                            textFormField(
-                              labelText: "Contact Person",
-                              controller: contactController,
-                            ),
-
-                            textFormField(
-                              labelText: "Phone Number",
-                              controller: phoneController,
-                              keyboardType: TextInputType.phone,
-                            ),
-
-                            textFormField(
-                              labelText: "Email Address",
-                              controller: emailController,
-                              keyboardType: TextInputType.emailAddress,
-                            ),
-                            textFormField(
-                              labelText: "Select Date",
-                              controller: dateController,
-                              readOnly: true,
-                              onTap: () {
-                                FocusScope.of(
-                                  context,
-                                ).requestFocus(FocusNode());
-                                pickDate();
-                              },
-                            ),
-                          ],
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              textFormField(
+                                labelText: "Customer Name",
+                                controller: nameController,
+                                onChanged: (val) => setState(() {}),
+                              ),
+                              textFormField(
+                                labelText: "Address",
+                                controller: addressController,
+                                maxLines: null,
+                                keyboardType: TextInputType.multiline,
+                              ),
+                              textFormField(
+                                labelText: "Contact Person",
+                                controller: contactController,
+                              ),
+                              textFormField(
+                                labelText: "Phone Number",
+                                controller: phoneController,
+                                keyboardType: TextInputType.phone,
+                              ),
+                              textFormField(
+                                labelText: "Email Address",
+                                controller: emailController,
+                                keyboardType: TextInputType.emailAddress,
+                              ),
+                              textFormField(
+                                labelText: "Select Date",
+                                controller: dateController,
+                                readOnly: true,
+                                onTap: () {
+                                  FocusScope.of(
+                                    context,
+                                  ).requestFocus(FocusNode());
+                                  pickDate();
+                                },
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
 
-                      const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                      /// SERVICE TYPE
-                      SectionWidget(
-                        title: "Select Service Type",
-                        icon: Icons.miscellaneous_services_outlined,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text(
-                                "Confidential Document Destruction",
+                        /// SERVICE TYPE
+                        SectionWidget(
+                          title: "Select Service Type",
+                          icon: Icons.miscellaneous_services_outlined,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text(
+                                  "Confidential Document Destruction",
+                                ),
+                                value: destruction,
+                                activeColor: AppColors.darkGreen,
+                                controlAffinity:
+                                    ListTileControlAffinity.trailing,
+                                checkboxScaleFactor: 1.2,
+                                onChanged: (v) =>
+                                    setState(() => destruction = v!),
                               ),
-                              value: destruction,
-                              activeColor: AppColors.darkGreen,
-                              controlAffinity: ListTileControlAffinity.trailing,
-                              checkboxScaleFactor: 1.2,
-                              onChanged: (v) =>
-                                  setState(() => destruction = v!),
-                            ),
-
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text(
-                                "Confidential Document Storage",
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text(
+                                  "Confidential Document Storage",
+                                ),
+                                value: storage,
+                                activeColor: AppColors.darkGreen,
+                                controlAffinity:
+                                    ListTileControlAffinity.trailing,
+                                checkboxScaleFactor: 1.2,
+                                onChanged: (v) => setState(() => storage = v!),
                               ),
-                              value: storage,
-                              activeColor: AppColors.darkGreen,
-                              controlAffinity: ListTileControlAffinity.trailing,
-                              checkboxScaleFactor: 1.2,
-                              onChanged: (v) => setState(() => storage = v!),
-                            ),
-
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text("E-Waste Recycling"),
-                              value: eWaste,
-                              activeColor: AppColors.darkGreen,
-                              controlAffinity: ListTileControlAffinity.trailing,
-                              checkboxScaleFactor: 1.2,
-                              onChanged: (v) => setState(() => eWaste = v!),
-                            ),
-
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: const Text("Service Delivery Ticket"),
-                              value: serviceTicket,
-                              activeColor: AppColors.darkGreen,
-                              controlAffinity: ListTileControlAffinity.trailing,
-                              checkboxScaleFactor: 1.2,
-                              onChanged: (v) =>
-                                  setState(() => serviceTicket = v!),
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            textFormField(
-                              labelText: "Custom Description",
-                              controller: customController,
-                            ),
-                            const SizedBox(height: 20),
-
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.miscellaneous_services_outlined,
-                                  color: AppColors.darkGreen,
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  "Units / Quantity",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            /// UNIT TYPE
-                            DropdownButtonFormField<String>(
-                              value: unitType,
-                              dropdownColor: AppColors.white,
-                              decoration: InputDecoration(
-                                labelText: "Unit Type",
-                                labelStyle: TextStyle(color: AppColors.black),
-                                filled: true,
-                                fillColor: Colors.grey.shade100,
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: AppColors.black,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: AppColors.black,
-                                  ),
-                                ),
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text("E-Waste Recycling"),
+                                value: eWaste,
+                                activeColor: AppColors.darkGreen,
+                                controlAffinity:
+                                    ListTileControlAffinity.trailing,
+                                checkboxScaleFactor: 1.2,
+                                onChanged: (v) => setState(() => eWaste = v!),
                               ),
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                title: const Text("Service Delivery Ticket"),
+                                value: serviceTicket,
+                                activeColor: AppColors.darkGreen,
+                                controlAffinity:
+                                    ListTileControlAffinity.trailing,
+                                checkboxScaleFactor: 1.2,
+                                onChanged: (v) =>
+                                    setState(() => serviceTicket = v!),
+                              ),
+                              const SizedBox(height: 10),
+                              textFormField(
+                                labelText: "Custom Description",
+                                controller: customController,
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.miscellaneous_services_outlined,
+                                    color: AppColors.darkGreen,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Text(
+                                    "Units / Quantity",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
 
-                              items: unit.map((value) {
-                                return DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value),
-                                );
-                              }).toList(),
-
-                              onChanged: (value) {
-                                setState(() {
-                                  unitType = value;
-                                  boxSize = null;
-
-                                  if (value == "SECURITY CONSOLE") {
-                                    measureController.text = "17.1 DRY GALLONS";
-                                  } else if (value == "SECURITY CART") {
-                                    measureController.text = "65 DRY GALLONS";
-                                  } else {
-                                    measureController.clear();
-                                  }
-                                });
-                              },
-                            ),
-
-                            if (unitType == "BOXES") ...[
-                              const SizedBox(height: 15),
-
+                              /// UNIT TYPE
                               DropdownButtonFormField<String>(
-                                value: boxSize,
+                                value: unitType,
                                 dropdownColor: AppColors.white,
                                 decoration: InputDecoration(
-                                  labelText: "Select Box Size",
+                                  labelText: "Unit Type",
                                   labelStyle: TextStyle(color: AppColors.black),
                                   filled: true,
                                   fillColor: Colors.grey.shade100,
@@ -876,400 +913,482 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
                                     ),
                                   ),
                                 ),
-                                items: boxSizes.map((size) {
+                                items: unit.map((value) {
                                   return DropdownMenuItem(
-                                    value: size,
-                                    child: Text(size),
+                                    value: value,
+                                    child: Text(value),
                                   );
                                 }).toList(),
                                 onChanged: (value) {
                                   setState(() {
-                                    boxSize = value;
-                                    measureController.text = value ?? "";
+                                    unitType = value;
+                                    boxSize = null;
+                                    if (value == "SECURITY CONSOLE") {
+                                      measureController.text =
+                                          "17.1 DRY GALLONS";
+                                    } else if (value == "SECURITY CART") {
+                                      measureController.text = "65 DRY GALLONS";
+                                    } else {
+                                      measureController.clear();
+                                    }
                                   });
                                 },
                               ),
-                            ],
 
-                            const SizedBox(height: 15),
-
-                            /// MEASURE
-                            if (unitType != "BOXES")
-                              textFormField(
-                                labelText: "Measure / Volume",
-                                controller: measureController,
-                              ),
-
-                            /// QUANTITY
-                            textFormField(
-                              labelText: "Quantity",
-                              controller: quantityController,
-                              keyboardType: TextInputType.number,
-                            ),
-
-                            const SizedBox(height: 20),
-
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.apartment,
-                                  color: AppColors.darkGreen,
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  "Departments",
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Colors.black87,
+                              if (unitType == "BOXES") ...[
+                                const SizedBox(height: 15),
+                                DropdownButtonFormField<String>(
+                                  value: boxSize,
+                                  dropdownColor: AppColors.white,
+                                  decoration: InputDecoration(
+                                    labelText: "Select Box Size",
+                                    labelStyle: TextStyle(
+                                      color: AppColors.black,
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade100,
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(
+                                        color: AppColors.black,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(
+                                        color: AppColors.black,
+                                      ),
+                                    ),
                                   ),
+                                  items: boxSizes.map((size) {
+                                    return DropdownMenuItem(
+                                      value: size,
+                                      child: Text(size),
+                                    );
+                                  }).toList(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      boxSize = value;
+                                      measureController.text = value ?? "";
+                                    });
+                                  },
                                 ),
                               ],
-                            ),
 
-                            const SizedBox(height: 10),
+                              const SizedBox(height: 15),
 
-                            /// Department ENTRY
-                            DropdownButtonFormField<DepartmentModel1>(
-                              value: selectedDepartment,
-                              dropdownColor: AppColors.white,
-                              decoration: InputDecoration(
-                                labelText: "Select Departments",
-                                labelStyle: TextStyle(color: AppColors.black),
-                                filled: true,
-                                fillColor: Colors.grey.shade100,
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: AppColors.black,
-                                  ),
+                              if (unitType != "BOXES")
+                                textFormField(
+                                  labelText: "Measure / Volume",
+                                  controller: measureController,
                                 ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(
-                                    color: AppColors.black,
-                                  ),
-                                ),
+
+                              textFormField(
+                                labelText: "Quantity",
+                                controller: quantityController,
+                                keyboardType: TextInputType.number,
                               ),
-                              items: departments.map((dept) {
-                                return DropdownMenuItem<DepartmentModel1>(
-                                  value: dept,
-                                  child: Text(dept.departmentName),
-                                );
-                              }).toList(),
-                              onChanged: (value) {
-                                setState(() {
-                                  selectedDepartment = value;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 20),
 
-                            /// ADD ITEM BUTTON
-                            CustomIconButton(
+                              const SizedBox(height: 20),
+
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.apartment,
+                                    color: AppColors.darkGreen,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  const Text(
+                                    "Departments",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              DropdownButtonFormField<DepartmentModel1>(
+                                value: selectedDepartment,
+                                dropdownColor: AppColors.white,
+                                decoration: InputDecoration(
+                                  labelText: "Select Departments",
+                                  labelStyle: TextStyle(color: AppColors.black),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade100,
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(
+                                      color: AppColors.black,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    borderSide: const BorderSide(
+                                      color: AppColors.black,
+                                    ),
+                                  ),
+                                ),
+                                items: departments.map((dept) {
+                                  return DropdownMenuItem<DepartmentModel1>(
+                                    value: dept,
+                                    child: Text(dept.departmentName),
+                                  );
+                                }).toList(),
+                                onChanged: (value) =>
+                                    setState(() => selectedDepartment = value),
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              Row(
+                                children: [
+                                  CustomIconButton(
+                                    backgroundColor: AppColors.darkGreen,
+                                    textColor: AppColors.white,
+                                    icon: editingIndex != null
+                                        ? Icons.check
+                                        : Icons.add,
+                                    label: editingIndex != null
+                                        ? "Update Item" // ✅ edit mode
+                                        : "Add Item and Department", // ✅ add mode
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 10,
+                                    ),
+                                    onTap: addItem,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  // ✅ Cancel edit button — edit mode માં show કરો
+                                  if (editingIndex != null) ...[
+                                    CustomIconButton(
+                                      borderColor: AppColors.red,
+                                      textColor: AppColors.red,
+                                      icon: Icons.close,
+                                      label: "Cancel Edit",
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 14,
+                                        vertical: 10,
+                                      ),
+                                      onTap: () {
+                                        setState(() {
+                                          editingIndex = null;
+                                          unitType = null;
+                                          boxSize = null;
+                                          measureController.clear();
+                                          quantityController.clear();
+                                          selectedDepartment = null;
+                                          customController.clear();
+                                          destruction = false;
+                                          storage = false;
+                                          eWaste = false;
+                                          serviceTicket = false;
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (serviceItems.isNotEmpty)
+                                const SizedBox(height: 20),
+
+                              ListView.separated(
+                                reverse: true,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: serviceItems.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 12),
+                                itemBuilder: (context, index) {
+                                  final item = serviceItems[index];
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      color: AppColors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: AppColors.darkGreen.withOpacity(
+                                          0.5,
+                                        ),
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: AppColors.black.withOpacity(
+                                            0.03,
+                                          ),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ListTile(
+                                      onTap: () => loadItemForEdit(index),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 10,
+                                          ),
+                                      leading: Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.darkGreen
+                                              .withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: const Icon(
+                                          Icons.inventory_2_outlined,
+                                          color: AppColors.darkGreen,
+                                          size: 22,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        getDepartmentName(item.departmentId),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      subtitle: Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item.unitType,
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 13,
+                                                color: Colors.grey.shade800,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              item.unitType == "Boxes"
+                                                  ? "Box Size: ${item.measure} | Qty: ${item.quantity}"
+                                                  : "Measure: ${item.measure} | Qty: ${item.quantity}",
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      trailing: Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                          onTap: () => setState(
+                                            () => serviceItems.removeAt(index),
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: Colors.red.withOpacity(
+                                                0.08,
+                                              ),
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Icon(
+                                              Icons.delete_outline,
+                                              color: AppColors.red,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        /// PHOTOS
+                        SectionWidget(
+                          title: "Photos",
+                          icon: Icons.image_outlined,
+                          trailing: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.darkGreen,
-                              textColor: AppColors.white,
-                              icon: Icons.add,
-                              label: "Add Item and Department",
+                              foregroundColor: AppColors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 14,
                                 vertical: 10,
                               ),
-                              onTap: () {
-                                addItem();
-                                //addDepartment();
-                              },
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
-
-                            if (serviceItems.isNotEmpty)
-                              const SizedBox(height: 20),
-
-                            /// ITEMS LIST
-                            ListView.separated(
-                              reverse: true,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: serviceItems.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final item = serviceItems[index];
-
-                                return Container(
+                            onPressed: pickImage,
+                            icon: const Icon(Icons.camera_alt),
+                            label: const Text("Take Photo"),
+                          ),
+                          child: Column(
+                            children: [
+                              if (photos.isEmpty)
+                                Container(
+                                  height: 120,
+                                  width: double.infinity,
                                   decoration: BoxDecoration(
-                                    color: AppColors.white,
-                                    borderRadius: BorderRadius.circular(14),
+                                    borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
                                       color: Colors.grey.shade300,
                                     ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.black.withOpacity(
-                                          0.03,
+                                    color: Colors.grey.shade50,
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.camera_alt_outlined,
+                                        size: 32,
+                                        color: Colors.grey.shade500,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        "No photos added",
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 14,
                                         ),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 3),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        "Tap 'Take Photo' to capture",
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 14,
-                                      vertical: 10,
+                                ),
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: photos.length,
+                                gridDelegate:
+                                    SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: width < 400
+                                          ? 3
+                                          : width < 700
+                                          ? 4
+                                          : 6,
+                                      crossAxisSpacing: 8,
+                                      mainAxisSpacing: 8,
                                     ),
-
-                                    // 🔹 ICON
-                                    leading: Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.darkGreen.withOpacity(
-                                          0.1,
-                                        ),
+                                itemBuilder: (context, index) {
+                                  return Stack(
+                                    children: [
+                                      ClipRRect(
                                         borderRadius: BorderRadius.circular(10),
+                                        child: AspectRatio(
+                                          aspectRatio: 1,
+                                          child: kIsWeb
+                                              ? Image.memory(
+                                                  photos[index],
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : Image.file(
+                                                  photos[index],
+                                                  fit: BoxFit.cover,
+                                                ),
+                                        ),
                                       ),
-                                      child: const Icon(
-                                        Icons.inventory_2_outlined,
-                                        color: AppColors.darkGreen,
-                                        size: 22,
-                                      ),
-                                    ),
-
-                                    // 🔹 TITLE
-                                    title: Text(
-                                      getDepartmentName(item.departmentId),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                      ),
-                                    ),
-
-                                    // 🔹 SUBTITLE (BETTER STRUCTURE)
-                                    subtitle: Padding(
-                                      padding: const EdgeInsets.only(top: 6),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            item.unitType,
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 13,
-                                              color: Colors.grey.shade800,
+                                      Positioned(
+                                        top: 4,
+                                        right: 4,
+                                        child: GestureDetector(
+                                          onTap: () => setState(
+                                            () => photos.removeAt(index),
+                                          ),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: const BoxDecoration(
+                                              color: Colors.black54,
+                                              shape: BoxShape.circle,
                                             ),
-                                          ),
-                                          const SizedBox(height: 2),
-                                          Text(
-                                            item.unitType == "Boxes"
-                                                ? "Box Size: ${item.measure} | Qty: ${item.quantity}"
-                                                : "Measure: ${item.measure} | Qty: ${item.quantity}",
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: Colors.grey.shade600,
+                                            child: const Icon(
+                                              Icons.close,
+                                              color: AppColors.white,
+                                              size: 16,
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // 🔹 DELETE BUTTON (BETTER UX)
-                                    trailing: Material(
-                                      color: Colors.transparent,
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(20),
-                                        onTap: () {
-                                          setState(() {
-                                            serviceItems.removeAt(index);
-                                          });
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.red.withOpacity(0.08),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.delete_outline,
-                                            color: AppColors.red,
-                                            size: 20,
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      /// PHOTOS
-                      SectionWidget(
-                        title: "Photos",
-                        icon: Icons.image_outlined,
-                        trailing: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.darkGreen,
-                            foregroundColor: AppColors.white,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 10,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          onPressed: () {
-                            pickImage();
-                          },
-                          icon: const Icon(Icons.camera_alt),
-                          label: const Text("Take Photo"),
-                        ),
-                        child: Column(
-                          children: [
-                            if (photos.isEmpty)
-                              Container(
-                                height: 120,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.grey.shade300,
-                                  ),
-                                  color: Colors.grey.shade50,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.camera_alt_outlined,
-                                      size: 32,
-                                      color: Colors.grey.shade500,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      "No photos added",
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      "Tap 'Take Photo' to capture",
-                                      style: TextStyle(
-                                        color: Colors.grey.shade500,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                    ],
+                                  );
+                                },
                               ),
-
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: photos.length,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: width < 400
-                                        ? 3
-                                        : width < 700
-                                        ? 4
-                                        : 6,
-                                    crossAxisSpacing: 8,
-                                    mainAxisSpacing: 8,
-                                  ),
-                              itemBuilder: (context, index) {
-                                return Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: AspectRatio(
-                                        aspectRatio: 1, // 🔥 perfect square
-                                        child: kIsWeb
-                                            ? Image.memory(
-                                                photos[index],
-                                                fit: BoxFit.cover,
-                                              )
-                                            : Image.file(
-                                                photos[index],
-                                                fit: BoxFit.cover,
-                                              ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 4,
-                                      right: 4,
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          setState(() {
-                                            photos.removeAt(index);
-                                          });
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.black54,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.close,
-                                            color: AppColors.white,
-                                            size: 16,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
 
-                      const SizedBox(height: 20),
-
-                      /// CUSTOMER  SIGNATURE
-                      SectionWidget(
-                        icon: Icons.draw_outlined,
-                        title: nameController.text.isEmpty
-                            ? "Customer Signature"
-                            : "${nameController.text} Signature",
-                        child: signatureBox(
-                          customerController,
-                          customerSignBytes,
-                          isAdminView: widget.isEdit && isAdmin,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-
-                      /// TECHNICIAN SIGNATURE
-                      SectionWidget(
-                        icon: Icons.draw_outlined,
-                        title:
-                            "${widget.technicianName ?? "Technician"} Signature",
-                        child: signatureBox(
-                          techController,
-                          techSignBytes,
-                          isAdminView: widget.isEdit && isAdmin,
-                        ),
-                      ),
-
-                      /// ADMIN SIGNATURE
-                      if (isAdmin) ...[
                         const SizedBox(height: 20),
+
+                        /// CUSTOMER & TECHNICIAN SIGNATURE
                         SectionWidget(
                           icon: Icons.draw_outlined,
-                          title: "${loggedUser?.name ?? "Admin"} Signature",
-                          child: signatureBox(adminController, adminSignBytes),
+                          title: "Customer & Technician Signature",
+                          child: Column(
+                            children: [
+                              signatureBox(
+                                controller: customerController,
+                                label: nameController.text.isEmpty
+                                    ? "Customer Signature"
+                                    : "${nameController.text} Signature",
+                                roleLabel: "Required",
+                                icon: Icons.person_outline_rounded,
+                                existingBase64: customerSignBase64, // ✅ String
+                                isAdminView: widget.isEdit && isAdmin,
+                                onReSigned: () =>
+                                    setState(() => customerSignBase64 = null),
+                              ),
+                              const SizedBox(height: 20),
+                              signatureBox(
+                                controller: techController,
+                                label:
+                                    "${widget.technicianName ?? loggedUser?.name ?? "Technician"} Signature",
+                                roleLabel: "Required",
+                                icon: Icons.person_outline_rounded,
+                                existingBase64: techSignBase64, // ✅ String
+                                isAdminView: widget.isEdit && isAdmin,
+                                onReSigned: () =>
+                                    setState(() => techSignBase64 = null),
+                              ),
+                            ],
+                          ),
                         ),
+
+                        /// ADMIN SIGNATURE
+                        if (isAdmin) ...[
+                          const SizedBox(height: 20),
+                          SectionWidget(
+                            icon: Icons.draw_outlined,
+                            title: "Admin Signature",
+                            child: signatureBox(
+                              controller: adminController,
+                              label: "${loggedUser?.name ?? "Admin"} Signature",
+                              roleLabel: "Authorized Signatory",
+                              icon: Icons.admin_panel_settings_outlined,
+                              existingBase64: adminSignBase64,
+                              isAdminView: false,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -1277,12 +1396,12 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(16),
         child: isLoading
-            ? SizedBox(
+            ? const SizedBox(
                 height: 50,
                 child: Center(
                   child: CircularProgressIndicator(color: AppColors.darkGreen),
                 ),
-              ) // 🔥 loader
+              )
             : CustomElevatedButton(
                 text: isAdmin
                     ? "Complete Form"
@@ -1295,56 +1414,289 @@ class _ServiceFormScreenState extends State<ServiceFormScreen> {
     );
   }
 
-  Widget signatureBox(
-    SignatureController controller,
-    Uint8List? existingBytes, {
-    bool isAdminView = false, // 🔥 NEW
+  Widget signatureBox({
+    required SignatureController controller,
+    required String label,
+    required String roleLabel,
+    required IconData icon,
+    String? existingBase64,
+    bool isAdminView = false,
+    VoidCallback? onReSigned,
   }) {
+    final bool showExisting = existingBase64 != null && controller.isEmpty;
+
     return Container(
-      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.grey.shade300),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isAdminView
+              ? AppColors.darkGreen.withOpacity(0.4)
+              : Colors.grey.shade200,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.darkGreen.withOpacity(0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// ✅ ADMIN VIEW → ONLY IMAGE
-          if (isAdminView && existingBytes != null)
-            SizedBox(
-              height: 150,
-              width: double.infinity,
-              child: Image.memory(existingBytes, fit: BoxFit.scaleDown),
-            )
-          /// ✅ NORMAL FLOW
-          else ...[
-            existingBytes != null && controller.isEmpty
-                ? Container(
-                    height: 150,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Image.memory(existingBytes, fit: BoxFit.scaleDown),
-                  )
-                : Signature(
-                    controller: controller,
-                    height: 150,
-                    backgroundColor: Colors.grey.shade100,
-                  ),
-
-            /// ❌ ADMIN ma hide karvu
-            if (!isAdminView)
-              CustomIconButton(
-                label: "Clear",
-                textColor: AppColors.red,
-                onTap: () {
-                  controller.clear();
-                  setState(() {});
-                },
+          /// ─── HEADER ───
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: isAdminView
+                  ? AppColors.darkGreen.withOpacity(0.08)
+                  : Colors.grey.shade50,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
               ),
-          ],
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade100, width: 1),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, size: 16, color: AppColors.darkGreen),
+                ),
+                const SizedBox(width: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2D3436),
+                      ),
+                    ),
+                    Text(
+                      roleLabel,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+
+                /// ✅ Signed badge
+                if (existingBase64 != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 12,
+                          color: AppColors.darkGreen,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          "Signed",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.darkGreen,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          /// ─── SIGNATURE AREA ───
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: isAdminView && existingBase64 != null
+                  /// 🔒 ADMIN VIEW — only image, no re-sign
+                  ? Container(
+                      height: 160,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Image.network(
+                        "data:image/png;base64,$existingBase64",
+                        fit: BoxFit.scaleDown,
+                      ),
+                    )
+                  : showExisting
+                  /// 🖼 Existing signature — Re-sign option
+                  ? Stack(
+                      children: [
+                        Container(
+                          height: 160,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Image.network(
+                            "data:image/png;base64,$existingBase64", // ✅ browser decode — no freeze
+                            fit: BoxFit.scaleDown,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () {
+                              controller.clear();
+                              onReSigned?.call();
+                              setState(() {});
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: AppColors.red.withOpacity(0.3),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.06),
+                                    blurRadius: 6,
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.refresh_rounded,
+                                    size: 13,
+                                    color: AppColors.red,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    "Re-sign",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.red,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  /// ✏️ Draw signature pad
+                  : Stack(
+                      children: [
+                        Signature(
+                          controller: controller,
+                          height: 160,
+                          backgroundColor: Colors.grey.shade50,
+                        ),
+                        if (controller.isEmpty)
+                          Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.draw_outlined,
+                                  size: 28,
+                                  color: Colors.grey.shade300,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  "Sign here",
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade400,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (!isAdminView)
+                          Positioned(
+                            bottom: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                controller.clear();
+                                setState(() {});
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppColors.red.withOpacity(0.3),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.06),
+                                      blurRadius: 6,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.clear_rounded,
+                                      size: 13,
+                                      color: AppColors.red,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      "Clear",
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.red,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+            ),
+          ),
         ],
       ),
     );

@@ -30,7 +30,7 @@ class SessionManager {
 
 class AddressFormatter {
   static String format(String address) {
-    if (address.isEmpty) return "";
+    if (address.trim().isEmpty) return "";
 
     List<String> parts = address
         .split(',')
@@ -38,12 +38,15 @@ class AddressFormatter {
         .where((e) => e.isNotEmpty)
         .toList();
 
-    if (parts.length <= 1) return address;
+    if (parts.length <= 1) {
+      return parts.isNotEmpty ? parts.first : "";
+    }
 
-    // ✅ Line 2 → City, PR ZIP
     String line2 = "${parts[parts.length - 2]}, ${parts[parts.length - 1]}";
-    // ✅ Line 1 → Street, Suite
     String line1 = parts.sublist(0, parts.length - 2).join(', ');
+
+    // ✅ Fix: line1 empty હોય તો comma નહીં
+    if (line1.isEmpty) return line2;
 
     return "$line1,\n$line2";
   }

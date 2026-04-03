@@ -108,7 +108,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ),
 
                     /// LOGOUT BUTTON
-                    CircleAvatar(
+                    /*       CircleAvatar(
                       backgroundColor: AppColors.white,
                       radius: 30,
                       child: CustomIconButton(
@@ -125,7 +125,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           );
                         },
                       ),
-                    ),
+                    ),*/
                   ],
                 ),
               ),
@@ -139,7 +139,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
               child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: 3,
+                itemCount: 4,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: gridCount,
                   crossAxisSpacing: 15,
@@ -151,8 +151,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   final items = [
                     {"icon": Icons.person, "title": "Technician List"},
                     {"icon": Icons.people, "title": "Customer List"},
-                    // {"icon": Icons.local_shipping, "title": "Transporter List"},
                     {"icon": Icons.description, "title": "Manifest List"},
+                    {"icon": Icons.power_settings_new, "title": "Logout"},
                   ];
 
                   return _actionCard(
@@ -178,21 +178,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         );
                       }
 
-                      /*     if (index == 2) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const TransporterListScreen(),
-                          ),
-                        );
-                      }
-*/
                       if (index == 2) {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (_) => const AllManifestListScreen(),
                           ),
+                        );
+                      }
+
+                      if (index == 3) {
+                        ConfirmDialog.show(
+                          context: context,
+                          title: "Logout",
+                          message: "Are you sure you want to logout?",
+                          icon: Icons.power_settings_new,
+                          confirmText: "Logout",
+                          onConfirm: logout,
                         );
                       }
                     },

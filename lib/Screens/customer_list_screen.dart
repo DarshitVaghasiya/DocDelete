@@ -4,6 +4,7 @@ import 'package:doc_delete/Models/customer_model.dart';
 import 'package:doc_delete/Widgets/confirm_dialog.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
+import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/config/api_urls.dart';
 import 'package:doc_delete/utils/session_manager.dart';
 import 'package:flutter/material.dart';
@@ -38,8 +39,17 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         List list = data["data"];
+        List<CustomerModel> tempList = list
+            .map((e) => CustomerModel.fromJson(e))
+            .toList();
+
+        // 👉 SORT HERE (A to Z)
+        tempList.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
+
         setState(() {
-          customer = list.map((e) => CustomerModel.fromJson(e)).toList();
+          customer = tempList;
         });
       }
     } catch (e) {
@@ -99,32 +109,36 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
         ],
       ),
 
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.darkGreen),
-            )
-          : customer.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.people_outline,
-                    size: 60,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    "No Customers Found",
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-                  ),
-                ],
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: fetchCustomers,
-              child: ListView.builder(
+      body: CustomRefresh(
+        onRefresh: fetchCustomers,
+        child: isLoading
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.darkGreen),
+              )
+            : customer.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.people_outline,
+                      size: 60,
+                      color: Colors.grey.shade400,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      "No Customers Found",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : ListView.builder(
                 padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: customer.length,
                 itemBuilder: (context, index) {
                   final customers = customer[index];
@@ -325,7 +339,7 @@ class _CustomerListScreenState extends State<CustomerListScreen> {
                   );
                 },
               ),
-            ),
+      ),
     );
   }
 }

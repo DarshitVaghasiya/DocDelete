@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:html' as html;
 import 'dart:ui_web' as ui;
+import 'package:doc_delete/Models/user_model.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -29,7 +30,8 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
   bool isLoading = false;
   String? _viewId;
   String? _url;
-
+  UserModel? loggedUser;
+  bool get isAdmin => loggedUser?.role == "admin";
   bool get _isMobile {
     if (!kIsWeb) return false;
     final userAgent = html.window.navigator.userAgent.toLowerCase();
@@ -41,6 +43,9 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
   @override
   void initState() {
     super.initState();
+
+    loadUser();
+
     if (kIsWeb && !_isMobile) {
       final blob = html.Blob([widget.bytes], 'application/pdf');
       _url = html.Url.createObjectUrlFromBlob(blob);
@@ -54,6 +59,12 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
           ..style.height = '100%';
       });
     }
+  }
+
+  Future<void> loadUser() async {
+    final user = await SessionManager.getUser();
+    if (!mounted) return;
+    setState(() => loggedUser = user);
   }
 
   @override
@@ -127,15 +138,18 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: CustomIconButton(
-                        label: "Send to E-mail",
-                        backgroundColor: AppColors.darkGreen,
-                        textColor: Colors.white,
-                        onTap: isLoading ? null : sharePdf,
+                    if (isAdmin) // 🔥 ONLY ADMIN CAN SEE
+                      Expanded(
+                        child: CustomIconButton(
+                          label: "Send to E-mail",
+                          backgroundColor: AppColors.darkGreen,
+                          textColor: Colors.white,
+                          onTap: isLoading ? null : sharePdf,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
+
+                    if (isAdmin) const SizedBox(width: 10),
+
                     Expanded(
                       child: CustomIconButton(
                         label: "Close",

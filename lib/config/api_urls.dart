@@ -1,8 +1,12 @@
 class ApiUrls {
   /// Base URL
-  static const String baseUrl = "http://192.168.1.8/api/index.php";
+
+  /* static const String baseUrl = "https://app.docdeletepr.com/api/index.php";
   static const String sendEmail =
-      "https://app.docdeletepr.com/api/send_pdf_email.php";
+      "https://app.docdeletepr.com/api/send_pdf_email.php";*/
+
+  static const String baseUrl = "http://192.168.1.4/api/index.php";
+  static const String sendEmail = "http://192.168.1.4/api/send_pdf_email.php";
 
   /// Auth
   static const String login = "$baseUrl/login";

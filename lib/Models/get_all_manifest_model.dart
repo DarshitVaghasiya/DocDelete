@@ -15,6 +15,8 @@ class GetAllManifestModel {
   final List<String> photos;
   final String? customerSign;
   final String? technicianSign;
+  final String? adminSign;
+  final int completed;
 
   GetAllManifestModel({
     required this.manifestID,
@@ -29,6 +31,8 @@ class GetAllManifestModel {
     required this.photos,
     this.customerSign,
     this.technicianSign,
+    this.adminSign,
+    required this.completed,
   });
 
   factory GetAllManifestModel.fromJson(Map<String, dynamic> json) {
@@ -49,6 +53,8 @@ class GetAllManifestModel {
       photos: (json['photos'] as List? ?? []).map((e) => e.toString()).toList(),
       customerSign: json['customer_sign']?.toString(),
       technicianSign: json['technician_sign']?.toString(),
+      adminSign: json['admin_sign']?.toString(),
+      completed: json["admin_completed"] ?? 0,
     );
   }
 }

@@ -82,6 +82,7 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
 
   final customerSignWidget = buildSignatureSync(manifest.customerSign);
   final technicianSignWidget = buildSignatureSync(manifest.technicianSign);
+  final adminSignWidget = buildSignatureSync(manifest.adminSign);
 
   String getDepartmentName(int id, List<DepartmentModel1> departments) {
     try {
@@ -128,7 +129,7 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.all(20),
       build: (context) => [
-        pw.SizedBox(height: 20),
+        pw.SizedBox(height: 10),
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -229,11 +230,17 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
             ),
             for (int i = 0; i < totalRows; i++)
               pw.TableRow(
+                decoration: const pw.BoxDecoration(
+                  border: pw.Border(
+                    bottom: pw.BorderSide(width: 0.5),
+                    top: pw.BorderSide(width: 0.5),
+                  ),
+                ),
                 children: [
-                  _buildCell(
+                  _buildInfoCell(
                     i < unitList.length ? unitList[i].serviceType : "",
                   ),
-                  _buildCell(
+                  _buildInfoCell(
                     i < unitList.length
                         ? getDepartmentName(
                             unitList[i].departmentId,
@@ -241,9 +248,15 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
                           )
                         : "",
                   ),
-                  _buildCell(i < unitList.length ? unitList[i].measure : ""),
-                  _buildCell(i < unitList.length ? unitList[i].quantity : ""),
-                  _buildCell(i < unitList.length ? unitList[i].unitType : ""),
+                  _buildInfoCell(
+                    i < unitList.length ? unitList[i].measure : "",
+                  ),
+                  _buildInfoCell(
+                    i < unitList.length ? unitList[i].quantity : "",
+                  ),
+                  _buildInfoCell(
+                    i < unitList.length ? unitList[i].unitType : "",
+                  ),
                 ],
               ),
           ],
@@ -383,7 +396,7 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
                       pw.SizedBox(width: 5),
                       pw.Expanded(
                         // 🔥 important
-                        child: pw.Center(child: pw.SizedBox()),
+                        child: pw.Center(child: adminSignWidget),
                       ),
                     ],
                   ),
@@ -424,6 +437,24 @@ pw.Widget _buildCell(String text) {
       text,
       style: pw.TextStyle(fontSize: 9),
       textAlign: pw.TextAlign.center,
+      softWrap: true,
+    ),
+  );
+}
+
+pw.Widget _buildInfoCell(String text) {
+  return pw.Container(
+    constraints: const pw.BoxConstraints(minHeight: 25),
+    padding: const pw.EdgeInsets.symmetric(
+      horizontal: 4,
+      vertical: 4,
+    ), // ✅ uniform padding
+    alignment: pw.Alignment.center,
+    child: pw.Text(
+      text,
+      style: pw.TextStyle(fontSize: 9),
+      textAlign: pw.TextAlign.center,
+      softWrap: true,
     ),
   );
 }

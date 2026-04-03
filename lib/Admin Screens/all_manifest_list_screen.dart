@@ -1,19 +1,20 @@
 import 'dart:convert';
 
+import 'package:doc_delete/Models/customer_model.dart';
 import 'package:doc_delete/Models/get_all_manifest_model.dart';
+import 'package:doc_delete/Models/user_model.dart';
 import 'package:doc_delete/PDF/manifest_pdf.dart';
 import 'package:doc_delete/PDF/pdf_preview.dart';
 import 'package:doc_delete/Technician%20Screens/service_form_screen.dart';
 import 'package:doc_delete/Widgets/confirm_dialog.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
+import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/config/api_urls.dart';
 import 'package:doc_delete/utils/session_manager.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:html' as html;
-
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
 
 class AllManifestListScreen extends StatefulWidget {
   const AllManifestListScreen({super.key});
@@ -24,11 +25,15 @@ class AllManifestListScreen extends StatefulWidget {
 
 class _AllManifestListScreenState extends State<AllManifestListScreen> {
   List<GetAllManifestModel> manifestList = [];
+  List<GetAllManifestModel> filteredList = [];
   bool isManifestLoading = false;
-  List technicians = [];
+  List<UserModel> technicians = [];
   int? selectedTechnicianId;
-  List customers = [];
+  List<CustomerModel> customers = [];
   int? selectedCustomerId;
+
+  /// 🔥 SEGMENT FILTER
+  String selectedFilter = "pending"; // "pending" | "completed"
 
   @override
   void initState() {
@@ -36,6 +41,17 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
     fetchTechnicians();
     fetchCustomers();
     fetchAllManifests();
+  }
+
+  void _applyFilter() {
+    if (selectedFilter == "pending") {
+      filteredList = manifestList.where((m) => m.completed == 0).toList();
+    } else if (selectedFilter == "completed") {
+      filteredList = manifestList.where((m) => m.completed == 1).toList();
+    } else {
+      filteredList = List.from(manifestList);
+    }
+    setState(() {});
   }
 
   Future<void> fetchAllManifests() async {
@@ -48,10 +64,7 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
       if (selectedTechnicianId != null) {
         url += "&technician_id=$selectedTechnicianId";
       }
-
-      if (selectedCustomerId != null) {
-        url += "&customer_id=$selectedCustomerId";
-      }
+      if (selectedCustomerId != null) url += "&customer_id=$selectedCustomerId";
 
       final response = await http.get(Uri.parse(url));
 
@@ -60,7 +73,6 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
 
         if (json["status"] == true) {
           final data = json["data"] as List;
-
           final list = data
               .map((e) => GetAllManifestModel.fromJson(e))
               .toList();
@@ -71,9 +83,8 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
             ).compareTo(DateTime.parse(a.serviceDate)),
           );
 
-          setState(() {
-            manifestList = list;
-          });
+          manifestList = list;
+          _applyFilter(); // 🔥 filter apply
         }
       }
     } catch (e) {
@@ -86,13 +97,21 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
   Future<void> fetchTechnicians() async {
     try {
       final res = await http.get(Uri.parse(ApiUrls.technician));
-
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
-
         if (json["status"] == true) {
+          final data = json["data"];
+
+          // ✅ data List છે કે Map — બંને handle કરો
+          final List rawList = data is List
+              ? data
+              : (data["users"] as List? ?? []);
+
           setState(() {
-            technicians = json["data"];
+            technicians = rawList.map((e) => UserModel.fromJson(e)).toList();
+            technicians.sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
           });
         }
       }
@@ -104,13 +123,21 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
   Future<void> fetchCustomers() async {
     try {
       final res = await http.get(Uri.parse(ApiUrls.customer));
-
       if (res.statusCode == 200) {
         final json = jsonDecode(res.body);
-
         if (json["status"] == true) {
+          final data = json["data"];
+
+          // ✅ data List છે કે Map — બંને handle કરો
+          final List rawList = data is List
+              ? data
+              : (data["customers"] as List? ?? []);
+
           setState(() {
-            customers = json["data"];
+            customers = rawList.map((e) => CustomerModel.fromJson(e)).toList();
+            customers.sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
           });
         }
       }
@@ -119,19 +146,14 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
     }
   }
 
-  Map<String, List<GetAllManifestModel>> groupByDate() {
+  Map<String, List<GetAllManifestModel>> groupByDate(
+    List<GetAllManifestModel> list,
+  ) {
     Map<String, List<GetAllManifestModel>> grouped = {};
-
-    for (var m in manifestList) {
-      String date = m.serviceDate; // yyyy-mm-dd
-
-      if (!grouped.containsKey(date)) {
-        grouped[date] = [];
-      }
-
-      grouped[date]!.add(m);
+    for (var m in list) {
+      if (!grouped.containsKey(m.serviceDate)) grouped[m.serviceDate] = [];
+      grouped[m.serviceDate]!.add(m);
     }
-
     return grouped;
   }
 
@@ -147,28 +169,20 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-
       if (data['status'] == true && data['data'] != null) {
-        // 🔥 CASE 1: data is LIST
         if (data['data'] is List) {
           final list = data['data'] as List;
-          if (list.isNotEmpty) {
-            return GetAllManifestModel.fromJson(list[0]);
-          }
-        }
-        // 🔥 CASE 2: data is OBJECT
-        else if (data['data'] is Map) {
+          if (list.isNotEmpty) return GetAllManifestModel.fromJson(list[0]);
+        } else if (data['data'] is Map) {
           return GetAllManifestModel.fromJson(data['data']);
         }
       }
     }
-
     return null;
   }
 
   Future<void> deleteManifest(int manifestId) async {
     int? userID = await SessionManager.getUserId();
-
     try {
       final response = await http.delete(
         Uri.parse(ApiUrls.manifest),
@@ -176,13 +190,11 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
         body: jsonEncode({
           "id": manifestId,
           "technician_id": userID,
-          "is_admin": userID, // ✅
+          "is_admin": userID,
         }),
       );
-      print(response.body);
 
       final data = jsonDecode(response.body);
-
       if (data["status"] == true) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -192,9 +204,8 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
               behavior: SnackBarBehavior.floating,
             ),
           );
-          setState(() {
-            manifestList.removeWhere((m) => m.manifestID == manifestId);
-          });
+          manifestList.removeWhere((m) => m.manifestID == manifestId);
+          _applyFilter();
         }
       } else {
         if (mounted) {
@@ -211,16 +222,20 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error: $e"), backgroundColor: AppColors.red),
         );
-        print("Error: $e");
       }
     }
   }
 
+  /// 🔥 COUNTS
+  int get pendingCount => manifestList.where((m) => m.completed == 0).length;
+  int get completedCount => manifestList.where((m) => m.completed == 1).length;
+
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
-    final groupedData = groupByDate();
+    final groupedData = groupByDate(filteredList);
     final dates = groupedData.keys.toList();
+
     return Scaffold(
       backgroundColor: const Color(0xffF4F7FB),
       appBar: CustomAppBar(title: "Manifests List"),
@@ -229,175 +244,209 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
               child: CircularProgressIndicator(color: AppColors.darkGreen),
             )
           : Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: width * .05,
-                vertical: width * .02,
-              ),
+              padding: EdgeInsets.symmetric(horizontal: width * .05),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int>(
-                        key: ValueKey(selectedTechnicianId),
-                        value: selectedTechnicianId,
-                        dropdownColor: Colors.white,
-                        hint: const Text("Select Technician"),
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem<int>(
-                            value: null, // 🔥 IMPORTANT
-                            child: Text("All Manifest"),
-                          ),
-                          ...technicians.map<DropdownMenuItem<int>>((tech) {
-                            return DropdownMenuItem<int>(
-                              value: tech["id"],
-                              child: Text(tech["name"]),
-                            );
-                          }).toList(),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            selectedTechnicianId = value;
+                  SizedBox(height: width * .03),
 
-                            /// 🔥 RESET CUSTOMER
-                            selectedCustomerId = null;
-                          });
+                  /// 🔒 FIXED — Segment Buttons (scroll નહીં થાય)
+                  _segmentButtons(),
 
-                          fetchAllManifests();
-                        },
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 14),
 
-                  Center(
-                    child: Text(
-                      "OR",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<int?>(
-                        key: ValueKey(selectedCustomerId),
-                        value: selectedCustomerId,
-                        dropdownColor: AppColors.white,
-                        hint: const Text("Select Customer"),
-                        isExpanded: true,
-                        items: [
-                          const DropdownMenuItem<int?>(
-                            value: null,
-                            child: Text("All Customers"),
-                          ),
-                          ...customers.map<DropdownMenuItem<int?>>((c) {
-                            return DropdownMenuItem<int?>(
-                              value: c["id"],
-                              child: Text(c["name"]),
-                            );
-                          }).toList(),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            selectedCustomerId = value;
-
-                            /// 🔥 RESET TECHNICIAN
-                            selectedTechnicianId = null;
-                          });
-
-                          fetchAllManifests();
-                        },
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  /// HEADER
-                  Text(
-                    "Total Manifests (${manifestList.length})",
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  /// LIST AREA
+                  /// 🔥 SCROLLABLE — બાકી બધું
                   Expanded(
-                    child: manifestList.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.description_outlined,
-                                  size: 60,
-                                  color: Colors.grey.shade400,
+                    child: CustomRefresh(
+                      onRefresh: fetchAllManifests,
+                      child: CustomScrollView(
+                        slivers: [
+                          /// ─── TECHNICIAN DROPDOWN ───
+                          SliverToBoxAdapter(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int>(
+                                  key: ValueKey(selectedTechnicianId),
+                                  value: selectedTechnicianId,
+                                  dropdownColor: Colors.white,
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem<int>(
+                                      value: null,
+                                      child: Text("All Technician"),
+                                    ),
+                                    ...technicians.map<DropdownMenuItem<int>>((
+                                      tech,
+                                    ) {
+                                      return DropdownMenuItem<int>(
+                                        value: tech.id,
+                                        child: Text(tech.name),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedTechnicianId = value;
+                                      selectedCustomerId = null;
+                                    });
+                                    fetchAllManifests();
+                                  },
                                 ),
-                                SizedBox(height: 12),
-                                Text(
-                                  "No manifests available",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.grey.shade600,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          )
-                        : ListView.builder(
-                            itemCount: dates.length,
-                            itemBuilder: (context, index) {
-                              final date = dates[index];
-                              final manifests = groupedData[date]!;
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  /// 🔥 DATE HEADER
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 8,
-                                    ),
-                                    child: Text(
-                                      date,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-
-                                  /// 🔥 LIST FOR THAT DATE
-                                  ...manifests.map(
-                                    (m) => Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 10,
-                                      ),
-                                      child: _manifestCard(m),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
                           ),
+
+                          const SliverToBoxAdapter(
+                            child: Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                child: Text(
+                                  "OR",
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          /// ─── CUSTOMER DROPDOWN ───
+                          SliverToBoxAdapter(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int?>(
+                                  key: ValueKey(selectedCustomerId),
+                                  value: selectedCustomerId,
+                                  dropdownColor: AppColors.white,
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem<int?>(
+                                      value: null,
+                                      child: Text("All Customers"),
+                                    ),
+                                    ...customers.map<DropdownMenuItem<int?>>((
+                                      c,
+                                    ) {
+                                      return DropdownMenuItem<int?>(
+                                        value: c.id,
+                                        child: Text(c.name),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      selectedCustomerId = value;
+                                      selectedTechnicianId = null;
+                                    });
+                                    fetchAllManifests();
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          /// ─── HEADER ───
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              child: Text(
+                                "Total Manifests (${filteredList.length})",
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          /// ─── EMPTY STATE ───
+                          if (filteredList.isEmpty)
+                            SliverFillRemaining(
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.description_outlined,
+                                      size: 60,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      "No manifests available",
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            )
+                          else
+                            /// ─── GROUPED LIST ───
+                            SliverList(
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final dates = groupByDate(
+                                    filteredList,
+                                  ).keys.toList();
+                                  final groupedData = groupByDate(filteredList);
+                                  final date = dates[index];
+                                  final manifests = groupedData[date]!;
+
+                                  return Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Text(
+                                          DateFormat(
+                                            'MMMM d, yyyy',
+                                          ).format(DateTime.parse(date)),
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                      ),
+                                      ...manifests.map(
+                                        (m) => Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 10,
+                                          ),
+                                          child: _manifestCard(m),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                                childCount: groupByDate(
+                                  filteredList,
+                                ).keys.length,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -405,56 +454,134 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
     );
   }
 
+  /// 🔥 SEGMENT BUTTONS WIDGET
+  Widget _segmentButtons() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          _segmentItem(
+            label: "Pending",
+            value: "pending",
+            activeColor: const Color(0xFFE67E22), // Orange
+          ),
+          _segmentItem(
+            label: "Completed",
+            value: "completed",
+            activeColor: AppColors.darkGreen,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentItem({
+    required String label,
+    required String value,
+    required Color activeColor,
+  }) {
+    final bool isActive = selectedFilter == value;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() => selectedFilter = value);
+          _applyFilter();
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive ? activeColor : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            boxShadow: isActive
+                ? [
+                    BoxShadow(
+                      color: activeColor.withOpacity(0.25),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Column(
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: isActive ? Colors.white : Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _manifestCard(GetAllManifestModel m) {
+    final bool isCompleted = m.completed == 1;
+
     return GestureDetector(
       onTap: () async {
-        final manifest = await getManifestById(manifestId: m.manifestID);
-
-        if (manifest != null) {
+        if (m.completed == 1) {
+          // ✅ Completed — PDF generate માટે full data જોઈએ, loader okay
+          setState(() => isManifestLoading = true);
+          try {
+            final manifest = await getManifestById(manifestId: m.manifestID);
+            if (manifest == null) {
+              setState(() => isManifestLoading = false);
+              return;
+            }
+            final bytes = await generateManifestPdf(
+              manifest,
+              technicianName: m.technicianName,
+            );
+            setState(() => isManifestLoading = false);
+            if (!mounted) return;
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => WebPdfViewerScreen(
+                  bytes: bytes,
+                  customerEmail: m.customer.email,
+                ),
+              ),
+            );
+          } catch (e) {
+            setState(() => isManifestLoading = false);
+          }
+        } else {
+          // ✅ Pending — 'm' already available, NO loader, NO extra fetch
+          if (!mounted) return;
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => ServiceFormScreen(
                 isEdit: true,
-                existManifest: manifest,
+                existManifest: m, // 🔥 directly pass
                 technicianName: m.technicianName,
               ),
             ),
-          ).then((_) {
-            fetchAllManifests(); // 🔄 refresh after update
-          });
+          ).then((_) => fetchAllManifests());
         }
       },
-      /*   onTap: () async {
-        setState(() => isManifestLoading = true);
-
-        final manifest = await getManifestById(manifestId: m.manifestID);
-
-        if (manifest != null) {
-          final bytes = await generateManifestPdf(
-            manifest,
-            technicianName: m.technicianName,
-          );
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => WebPdfViewerScreen(
-                bytes: bytes,
-                customerEmail: m.customer.email,
-              ),
-            ),
-          );
-        }
-
-        setState(() => isManifestLoading = false);
-      },*/
       child: Container(
         margin: const EdgeInsets.only(bottom: 5),
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.darkGreen.withOpacity(0.2)),
+          border: Border.all(
+            color: isCompleted
+                ? AppColors.darkGreen.withOpacity(0.5)
+                : AppColors.orange.withOpacity(0.5),
+          ),
           boxShadow: [
             BoxShadow(
               color: AppColors.darkGreen.withOpacity(0.06),
@@ -466,9 +593,15 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
-                left: BorderSide(color: AppColors.darkGreen, width: 6),
+                /// 🔥 Pending = orange, Completed = green
+                left: BorderSide(
+                  color: isCompleted
+                      ? AppColors.darkGreen
+                      : const Color(0xFFE67E22),
+                  width: 6,
+                ),
               ),
             ),
             child: Padding(
@@ -479,23 +612,17 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                m.customer.name,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2D3436),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          m.customer.name,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2D3436),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Icon(
@@ -516,6 +643,46 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
                             ),
                           ],
                         ),
+                        const SizedBox(height: 6),
+
+                        /// 🔥 Status badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isCompleted
+                                ? AppColors.darkGreen.withOpacity(0.1)
+                                : const Color(0xFFE67E22).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isCompleted
+                                    ? Icons.check_circle_rounded
+                                    : Icons.schedule_rounded,
+                                size: 11,
+                                color: isCompleted
+                                    ? AppColors.darkGreen
+                                    : const Color(0xFFE67E22),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                isCompleted ? "Completed" : "Pending",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: isCompleted
+                                      ? AppColors.darkGreen
+                                      : const Color(0xFFE67E22),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -530,32 +697,34 @@ class _AllManifestListScreenState extends State<AllManifestListScreen> {
                           color: AppColors.darkGreen,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () {
-                          ConfirmDialog.show(
-                            context: context,
-                            title: "Delete Manifest",
-                            message:
-                                "Are you sure you want to delete ${m.manifestNo}?",
-                            confirmText: "Delete",
-                            confirmColor: AppColors.red,
-                            onConfirm: () => deleteManifest(m.manifestID),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppColors.red.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 22,
-                            color: AppColors.red,
+                      if (!isCompleted) ...[
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            ConfirmDialog.show(
+                              context: context,
+                              title: "Delete Manifest",
+                              message:
+                                  "Are you sure you want to delete ${m.manifestNo}?",
+                              confirmText: "Delete",
+                              confirmColor: AppColors.red,
+                              onConfirm: () => deleteManifest(m.manifestID),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.red.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 22,
+                              color: AppColors.red,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ],

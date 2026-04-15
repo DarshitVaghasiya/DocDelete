@@ -4,7 +4,6 @@ import 'package:doc_delete/Models/technician_model.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_elevated_button.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
-import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/Widgets/custom_textformfield.dart';
 import 'package:doc_delete/Widgets/section_widget.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -15,8 +14,9 @@ import 'package:share_plus/share_plus.dart';
 
 class AddTechnicianScreen extends StatefulWidget {
   final TechnicianModel? technician;
+  final VoidCallback? onSaved;
 
-  const AddTechnicianScreen({super.key, this.technician});
+  const AddTechnicianScreen({super.key, this.technician, this.onSaved});
 
   @override
   State<AddTechnicianScreen> createState() => _AddTechnicianScreenState();
@@ -38,20 +38,19 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
     existingTechnician();
   }
 
-  Future<void> existingTechnician() async {
+  void existingTechnician() {
     if (widget.technician != null) {
-      isEditing = false; // 👈 default read-only for edit case
+      isEditing = false;
 
       nameController.text = widget.technician!.name;
       addressController.text = AddressFormatter.format(
         widget.technician?.address ?? "",
       );
-
       phoneController.text = widget.technician!.phone;
       emailController.text = widget.technician!.email;
       passwordController.text = widget.technician!.password;
     } else {
-      isEditing = true; // 👈 add case → editable
+      isEditing = true;
     }
   }
 
@@ -100,7 +99,9 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       if (mounted) {
-        Navigator.pop(context, true);
+        if (widget.onSaved != null) {
+          widget.onSaved!();
+        }
       }
     } else {
       debugPrint("Error saving technician: ${response.body}");
@@ -108,135 +109,145 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
   }
 
   @override
+  void dispose() {
+    nameController.dispose();
+    addressController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF4F7FB),
-      appBar: CustomAppBar(
-        title: widget.technician == null ? "Add Technician" : "Edit Technician",
-      ),
+    return Column(
+      children: [
+        CustomAppBar(
+          title: widget.technician == null
+              ? "Add Technician"
+              : "Edit Technician",
+        ),
 
-      body: CustomRefresh(
-        onRefresh: existingTechnician,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          child: SectionWidget(
-            icon: Icons.person,
-            title: "Technician Information",
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  textFormField(
-                    labelText: "Technician Name",
-                    controller: nameController,
-                    enabled: isEditing,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Technician Name required";
-                      }
-                      return null;
-                    },
-                  ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: SectionWidget(
+              icon: Icons.person,
+              title: "Technician Information",
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    textFormField(
+                      labelText: "Technician Name",
+                      controller: nameController,
+                      enabled: isEditing,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return "Technician Name required";
+                        }
+                        return null;
+                      },
+                    ),
 
-                  textFormField(
-                    labelText: "Address",
-                    controller: addressController,
-                    enabled: isEditing,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Address required";
-                      }
-                      return null;
-                    },
-                  ),
+                    textFormField(
+                      labelText: "Address",
+                      controller: addressController,
+                      enabled: isEditing,
+                      maxLines: null,
+                      keyboardType: TextInputType.multiline,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return "Address required";
+                        }
+                        return null;
+                      },
+                    ),
 
-                  textFormField(
-                    labelText: "Phone",
-                    controller: phoneController,
-                    keyboardType: TextInputType.phone,
-                    enabled: isEditing,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Phone required";
-                      }
-                      return null;
-                    },
-                  ),
+                    textFormField(
+                      labelText: "Phone",
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      enabled: isEditing,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return "Phone required";
+                        }
+                        return null;
+                      },
+                    ),
 
-                  textFormField(
-                    labelText: "Email",
-                    controller: emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    enabled: isEditing,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Email required";
-                      }
-                      return null;
-                    },
-                  ),
-                  textFormField(
-                    labelText: "Password",
-                    controller: passwordController,
-                    keyboardType: TextInputType.visiblePassword,
-                    enabled: isEditing,
-                    obscureText: !isEditing,
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return "Password required";
-                      }
-                      return null;
-                    },
-                  ),
+                    textFormField(
+                      labelText: "Email",
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      enabled: isEditing,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return "Email required";
+                        }
+                        return null;
+                      },
+                    ),
+                    textFormField(
+                      labelText: "Password",
+                      controller: passwordController,
+                      keyboardType: TextInputType.visiblePassword,
+                      enabled: isEditing,
+                      obscureText: !isEditing,
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return "Password required";
+                        }
+                        return null;
+                      },
+                    ),
 
-                  Row(
-                    children: [
-                      Expanded(
-                        child: CustomIconButton(
-                          label: "Generate Password",
-                          backgroundColor: isEditing
-                              ? AppColors.darkGreen
-                              : Colors.grey.shade400,
-                          textColor: isEditing
-                              ? AppColors.white
-                              : Colors.black45,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CustomIconButton(
+                            label: "Generate Password",
+                            backgroundColor: isEditing
+                                ? AppColors.darkGreen
+                                : Colors.grey.shade400,
+                            textColor: isEditing
+                                ? AppColors.white
+                                : Colors.black45,
 
-                          onTap: () {
-                            if (!isEditing) return;
-                            passwordController.text = generatePassword();
-                          },
+                            onTap: () {
+                              if (!isEditing) return;
+                              passwordController.text = generatePassword();
+                            },
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: CustomIconButton(
-                          label: "Share Password",
-                          borderColor: isEditing
-                              ? AppColors.black
-                              : AppColors.grey,
-                          textColor: isEditing
-                              ? AppColors.black
-                              : Colors.black45,
-                          onTap: () {
-                            if (!isEditing) return;
-                            if (nameController.text.isEmpty ||
-                                emailController.text.isEmpty ||
-                                passwordController.text.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    "Please fill technician details",
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: CustomIconButton(
+                            label: "Share Password",
+                            borderColor: isEditing
+                                ? AppColors.black
+                                : AppColors.grey,
+                            textColor: isEditing
+                                ? AppColors.black
+                                : Colors.black45,
+                            onTap: () {
+                              if (!isEditing) return;
+                              if (nameController.text.isEmpty ||
+                                  emailController.text.isEmpty ||
+                                  passwordController.text.isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Please fill technician details",
+                                    ),
                                   ),
-                                ),
-                              );
-                              return;
-                            }
+                                );
+                                return;
+                              }
 
-                            String message =
-                                """
+                              String message =
+                                  """
                               Technician Login Details
 
                               Name: ${nameController.text}
@@ -246,40 +257,60 @@ class _AddTechnicianScreenState extends State<AddTechnicianScreen> {
                               Please keep this password secure.
                               """;
 
-                            Share.share(message);
-                          },
+                              Share.share(message);
+                            },
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16),
-        child: CustomElevatedButton(
-          text: widget.technician == null
-              ? "Save Technician"
-              : (isEditing ? "Update Technician" : "Edit Technician"),
-          backgroundColor: widget.technician != null && !isEditing
-              ? AppColors.orange
-              : AppColors.darkGreen,
-          onPressed: () {
-            if (widget.technician != null && !isEditing) {
-              setState(() {
-                isEditing = true;
-              });
-            } else {
-              if (_formKey.currentState!.validate()) {
-                saveTechnician();
-              }
-            }
-          },
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: CustomElevatedButton(
+                  text: widget.technician == null
+                      ? "Save Technician"
+                      : (isEditing ? "Update Technician" : "Edit Technician"),
+                  backgroundColor: widget.technician != null && !isEditing
+                      ? AppColors.orange
+                      : AppColors.darkGreen,
+                  onPressed: () {
+                    if (widget.technician != null && !isEditing) {
+                      setState(() {
+                        isEditing = true;
+                      });
+                    } else {
+                      if (_formKey.currentState!.validate()) {
+                        saveTechnician();
+                      }
+                    }
+                  },
+                ),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: CustomElevatedButton(
+                  text: "Cancel",
+                  backgroundColor: AppColors.red,
+                  onPressed: () {
+                    if (widget.onSaved != null) {
+                      widget.onSaved!();
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

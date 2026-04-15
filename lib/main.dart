@@ -47,8 +47,10 @@ class MyApp extends StatelessWidget {
             return snapshot.data as Widget;
           }
 
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          return Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(color: AppColors.darkGreen),
+            ),
           );
         },
       ),

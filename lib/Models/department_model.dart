@@ -1,16 +1,13 @@
-import 'dart:convert';
-import 'package:signature/signature.dart';
-
-class DepartmentModel1 {
+class DepartmentModel {
   final int? id;
   final int? customerId;
   final String departmentName;
 
-  DepartmentModel1({this.id, this.customerId, required this.departmentName});
+  DepartmentModel({this.id, this.customerId, required this.departmentName});
 
   /// FROM JSON
-  factory DepartmentModel1.fromJson(Map<String, dynamic> json) {
-    return DepartmentModel1(
+  factory DepartmentModel.fromJson(Map<String, dynamic> json) {
+    return DepartmentModel(
       id: int.tryParse(json['id'].toString()),
       customerId: int.tryParse(json['customer_id'].toString()),
       departmentName: json['department_name'] ?? '',

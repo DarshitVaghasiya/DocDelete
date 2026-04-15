@@ -1,14 +1,11 @@
 import 'dart:convert';
 import 'package:doc_delete/Models/get_all_manifest_model.dart';
 import 'package:doc_delete/Models/user_model.dart';
-import 'package:doc_delete/PDF/manifest_pdf.dart';
 import 'package:doc_delete/Screens/customer_list_screen.dart';
 import 'package:doc_delete/Technician Screens/service_form_screen.dart';
 import 'package:doc_delete/Screens/login_screen.dart';
 import 'package:doc_delete/Technician%20Screens/manifest_list_screen.dart';
-import 'package:doc_delete/PDF/pdf_preview.dart';
 import 'package:doc_delete/Widgets/confirm_dialog.dart';
-import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/config/api_urls.dart';
 import 'package:doc_delete/utils/session_manager.dart';
 import 'package:flutter/material.dart';
@@ -179,235 +176,229 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xffF4F7FB),
-      body: CustomRefresh(
-        onRefresh: fetchManifests,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              /// ─── HEADER ───
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.symmetric(
-                  horizontal: width < 600 ? 20 : 40,
-                  vertical: width < 600 ? 30 : 40,
-                ),
-                decoration: const BoxDecoration(
-                  color: AppColors.darkGreen,
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(35),
-                    bottomRight: Radius.circular(35),
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "WELCOME ${loggedUser?.name ?? "TECHNICIAN"}",
-                        style: TextStyle(
-                          fontSize: width < 600 ? 22 : 28,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      Text(
-                        "Manage your service manifests easily",
-                        style: TextStyle(
-                          fontSize: width < 600 ? 13 : 16,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
+      body: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            /// ─── HEADER ───
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: width < 600 ? 20 : 40,
+                vertical: width < 600 ? 30 : 40,
+              ),
+              decoration: const BoxDecoration(
+                color: AppColors.darkGreen,
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(35),
+                  bottomRight: Radius.circular(35),
                 ),
               ),
-
-              const SizedBox(height: 40),
-
-              /// ─── ACTION GRID ───
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: width * .05),
-                child: SafeArea(
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: 4,
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: gridCount,
-                      crossAxisSpacing: 15,
-                      mainAxisSpacing: 15,
-                      childAspectRatio: width < 1300 ? 1.4 : 2,
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "WELCOME ${loggedUser?.name ?? "TECHNICIAN"}",
+                      style: TextStyle(
+                        fontSize: width < 600 ? 22 : 28,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    itemBuilder: (context, index) {
-                      final items = [
-                        {"icon": Icons.add, "title": "New Service"},
-                        {"icon": Icons.people, "title": "Customer List"},
-                        {
-                          "icon": Icons.description,
-                          "title": "Manifest History",
-                        },
-                        {"icon": Icons.power_settings_new, "title": "Logout"},
-                      ];
-
-                      return _actionCard(
-                        items[index]["icon"] as IconData,
-                        items[index]["title"] as String,
-                        iconRadius,
-                        () async {
-                          if (index == 0) {
-                            final result = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ServiceFormScreen(),
-                              ),
-                            );
-                            if (result == true) fetchManifests();
-                          }
-                          if (index == 1) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const CustomerListScreen(),
-                              ),
-                            );
-                          }
-                          if (index == 2) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const ManifestListScreen(),
-                              ),
-                            );
-                          }
-                          if (index == 3) {
-                            ConfirmDialog.show(
-                              context: context,
-                              title: "Logout",
-                              message: "Are you sure you want to logout?",
-                              icon: Icons.power_settings_new,
-                              confirmText: "Logout",
-                              onConfirm: logout,
-                            );
-                          }
-                        },
-                      );
-                    },
-                  ),
+                    const SizedBox(height: 5),
+                    Text(
+                      "Manage your service manifests easily",
+                      style: TextStyle(
+                        fontSize: width < 600 ? 13 : 16,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            ),
 
-              const SizedBox(height: 30),
+            const SizedBox(height: 40),
 
-              /// ─── TODAY'S PENDING MANIFESTS ───
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: width * .05),
-                child: Container(
-                  padding: EdgeInsets.all(width < 600 ? 15 : 25),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkGreen,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 10,
-                        color: Colors.grey.withOpacity(.1),
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
+            /// ─── ACTION GRID ───
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: width * .05),
+              child: SafeArea(
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: 4,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: gridCount,
+                    crossAxisSpacing: 15,
+                    mainAxisSpacing: 15,
+                    childAspectRatio: width < 1300 ? 1.4 : 2,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      /// Section Header
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(
-                              Icons.schedule_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Today's Pending Manifests",
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                Text(
-                                  "Tap a manifest to edit manifest",
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white60,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  itemBuilder: (context, index) {
+                    final items = [
+                      {"icon": Icons.add, "title": "New Service"},
+                      {"icon": Icons.people, "title": "Customer List"},
+                      {"icon": Icons.description, "title": "Manifest History"},
+                      {"icon": Icons.power_settings_new, "title": "Logout"},
+                    ];
 
-                      const SizedBox(height: 20),
-
-                      if (isManifestLoading)
-                        const Center(
-                          child: CircularProgressIndicator(color: Colors.white),
-                        )
-                      else if (manifestList.isEmpty)
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.check_circle_outline_rounded,
-                                  size: 48,
-                                  color: Colors.white.withOpacity(0.4),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  "No pending manifests today!",
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                    return _actionCard(
+                      items[index]["icon"] as IconData,
+                      items[index]["title"] as String,
+                      iconRadius,
+                      () async {
+                        if (index == 0) {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ServiceFormScreen(),
                             ),
+                          );
+                          if (result == true) fetchManifests();
+                        }
+                        if (index == 1) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const CustomerListScreen(),
+                            ),
+                          );
+                        }
+                        if (index == 2) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ManifestListScreen(),
+                            ),
+                          );
+                        }
+                        if (index == 3) {
+                          ConfirmDialog.show(
+                            context: context,
+                            title: "Logout",
+                            message: "Are you sure you want to logout?",
+                            icon: Icons.power_settings_new,
+                            confirmText: "Logout",
+                            onConfirm: logout,
+                          );
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            /// ─── TODAY'S PENDING MANIFESTS ───
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: width * .05),
+              child: Container(
+                padding: EdgeInsets.all(width < 600 ? 15 : 25),
+                decoration: BoxDecoration(
+                  color: AppColors.darkGreen,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 10,
+                      color: Colors.grey.withOpacity(.1),
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    /// Section Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                        )
-                      else
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: manifestList.length,
-                          itemBuilder: (context, index) {
-                            final m = manifestList[index];
-                            return _dashboardManifestCard(m);
-                          },
+                          child: const Icon(
+                            Icons.schedule_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
-                    ],
-                  ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Today's Pending Manifests",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                "Tap a manifest to edit manifest",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white60,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    if (isManifestLoading)
+                      const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      )
+                    else if (manifestList.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 48,
+                                color: Colors.white.withOpacity(0.4),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                "No pending manifests today!",
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.white.withOpacity(0.7),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: manifestList.length,
+                        itemBuilder: (context, index) {
+                          final m = manifestList[index];
+                          return _dashboardManifestCard(m);
+                        },
+                      ),
+                  ],
                 ),
               ),
+            ),
 
-              const SizedBox(height: 40),
-            ],
-          ),
+            const SizedBox(height: 40),
+          ],
         ),
       ),
     );
@@ -416,8 +407,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _dashboardManifestCard(GetAllManifestModel m) {
     return GestureDetector(
       onTap: () async {
-        // ✅ 'isPdfLoading' / extra fetch — completely દૂર
-        // 'm' directly pass કરો
         if (!mounted) return;
 
         Navigator.push(

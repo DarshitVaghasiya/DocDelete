@@ -1,11 +1,9 @@
 import 'dart:convert';
-
 import 'package:doc_delete/Models/customer_model.dart';
 import 'package:doc_delete/Models/department_model.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_elevated_button.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
-import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/Widgets/custom_textformfield.dart';
 import 'package:doc_delete/Widgets/section_widget.dart';
 import 'package:doc_delete/config/api_urls.dart';
@@ -15,8 +13,9 @@ import 'package:http/http.dart' as http;
 
 class AddCustomerScreen extends StatefulWidget {
   final CustomerModel? customer;
+  final VoidCallback? onSaved;
 
-  const AddCustomerScreen({super.key, this.customer});
+  const AddCustomerScreen({super.key, this.customer, this.onSaved});
 
   @override
   State<AddCustomerScreen> createState() => _AddCustomerScreenState();
@@ -25,6 +24,7 @@ class AddCustomerScreen extends StatefulWidget {
 class _AddCustomerScreenState extends State<AddCustomerScreen> {
   final _formKey = GlobalKey<FormState>();
   bool isEditing = false;
+  bool isAdmin = false;
 
   final nameController = TextEditingController();
   final addressController = TextEditingController();
@@ -33,15 +33,23 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
   final emailController = TextEditingController();
   final departmentController = TextEditingController();
 
-  List<DepartmentModel1> departments = [];
+  List<DepartmentModel> departments = [];
 
   @override
   void initState() {
     super.initState();
+    loadUserRole();
     existingCustomer();
     if (widget.customer != null && widget.customer!.id != null) {
       fetchDepartments(widget.customer!.id!);
     }
+  }
+
+  Future<void> loadUserRole() async {
+    final user = await SessionManager.getUser();
+    setState(() {
+      isAdmin = user?.role == "admin"; // 🔥 role check
+    });
   }
 
   Future<void> existingCustomer() async {
@@ -106,7 +114,15 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
         departments: departments, // 🔥 IMPORTANT
       );
 
-      if (mounted) Navigator.pop(context, updatedCustomer);
+      if (mounted) {
+        if (widget.onSaved != null && isAdmin) {
+          // ✅ Admin flow (same screen)
+          widget.onSaved!();
+        } else {
+          // ✅ Normal user flow (Navigator)
+          Navigator.pop(context, updatedCustomer);
+        }
+      }
     } else {
       debugPrint("Error: ${response.body}");
     }
@@ -137,7 +153,7 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
     if (data["status"] == true) {
       setState(() {
         departments = (data["data"] as List)
-            .map((e) => DepartmentModel1.fromJson(e))
+            .map((e) => DepartmentModel.fromJson(e))
             .toList();
       });
     } else {
@@ -155,272 +171,298 @@ class _AddCustomerScreenState extends State<AddCustomerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF4F7FB),
-      appBar: CustomAppBar(
-        title: widget.customer == null ? "Add Customer" : "Edit Customer",
-      ),
-      body: CustomRefresh(
-        onRefresh: existingCustomer,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              SectionWidget(
-                icon: Icons.people_alt_outlined,
-                title: "Customer Information",
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      textFormField(
-                        labelText: "Customer Name",
-                        controller: nameController,
-                        enabled: isEditing,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return "Customer Name required";
-                          }
-                          return null;
-                        },
-                      ),
-
-                      textFormField(
-                        labelText: "Address",
-                        controller: addressController,
-                        enabled: isEditing,
-                        maxLines: null,
-                        keyboardType: TextInputType.multiline,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return "Address required";
-                          }
-                          return null;
-                        },
-                      ),
-
-                      textFormField(
-                        labelText: "Contact Person",
-                        controller: contactController,
-                        enabled: isEditing,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return "Contact Person required";
-                          }
-                          return null;
-                        },
-                      ),
-
-                      textFormField(
-                        labelText: "Phone",
-                        controller: phoneController,
-                        keyboardType: TextInputType.phone,
-                        enabled: isEditing,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return "Phone required";
-                          }
-                          return null;
-                        },
-                      ),
-
-                      textFormField(
-                        labelText: "Email",
-                        controller: emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        enabled: isEditing,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return "Email required";
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              SectionWidget(
-                icon: Icons.apartment,
-                title: "Departments",
-                child: Form(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      textFormField(
-                        labelText: "Department Name",
-                        controller: departmentController,
-                        enabled: isEditing,
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      CustomIconButton(
-                        label: "Add Department",
-                        backgroundColor: isEditing
-                            ? AppColors.darkGreen
-                            : Colors.grey.shade400,
-                        textColor: isEditing ? Colors.white : Colors.black45,
-
-                        onTap: () {
-                          if (!isEditing) return;
-                          if (departmentController.text.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text("Enter department name"),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                            return;
-                          }
-                          if (departmentController.text.trim().isNotEmpty) {
-                            setState(() {
-                              departments.add(
-                                DepartmentModel1(
-                                  departmentName: departmentController.text
-                                      .trim(),
-                                ),
-                              );
-                              departmentController.clear();
-                            });
-                          }
-                        },
-                      ),
-
-                      if (departments.isNotEmpty) const SizedBox(height: 20),
-
-                      /// Empty State
-                      if (departments.isEmpty)
-                        Center(
-                          child: Text(
-                            "No departments added yet",
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+    Widget content = Column(
+      children: [
+        CustomAppBar(
+          title: widget.customer == null ? "Add Customer" : "Edit Customer",
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                SectionWidget(
+                  icon: Icons.people_alt_outlined,
+                  title: "Customer Information",
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      children: [
+                        textFormField(
+                          labelText: "Customer Name",
+                          controller: nameController,
+                          enabled: isEditing,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Customer Name required";
+                            }
+                            return null;
+                          },
                         ),
 
-                      /// Department List
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: departments.length,
-                        itemBuilder: (context, index) {
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppColors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.shade300),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.black.withOpacity(0.05),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
+                        textFormField(
+                          labelText: "Address",
+                          controller: addressController,
+                          enabled: isEditing,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Address required";
+                            }
+                            return null;
+                          },
+                        ),
+
+                        textFormField(
+                          labelText: "Contact Person",
+                          controller: contactController,
+                          enabled: isEditing,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Contact Person required";
+                            }
+                            return null;
+                          },
+                        ),
+
+                        textFormField(
+                          labelText: "Phone",
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          enabled: isEditing,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Phone required";
+                            }
+                            return null;
+                          },
+                        ),
+
+                        textFormField(
+                          labelText: "Email",
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          enabled: isEditing,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return "Email required";
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                SectionWidget(
+                  icon: Icons.apartment,
+                  title: "Departments",
+                  child: Form(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        textFormField(
+                          labelText: "Department Name",
+                          controller: departmentController,
+                          enabled: isEditing,
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        CustomIconButton(
+                          label: "Add Department",
+                          backgroundColor: isEditing
+                              ? AppColors.darkGreen
+                              : Colors.grey.shade400,
+                          textColor: isEditing ? Colors.white : Colors.black45,
+
+                          onTap: () {
+                            if (!isEditing) return;
+                            if (departmentController.text.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Enter department name"),
+                                  behavior: SnackBarBehavior.floating,
                                 ),
-                              ],
+                              );
+                              return;
+                            }
+                            if (departmentController.text.trim().isNotEmpty) {
+                              setState(() {
+                                departments.add(
+                                  DepartmentModel(
+                                    departmentName: departmentController.text
+                                        .trim(),
+                                  ),
+                                );
+                                departmentController.clear();
+                              });
+                            }
+                          },
+                        ),
+
+                        if (departments.isNotEmpty) const SizedBox(height: 20),
+
+                        /// Empty State
+                        if (departments.isEmpty)
+                          Center(
+                            child: Text(
+                              "No departments added yet",
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                            child: Row(
-                              children: [
-                                /// Icon
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.darkGreen.withOpacity(0.1),
-                                    shape: BoxShape.circle,
+                          ),
+
+                        /// Department List
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: departments.length,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade300),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.black.withOpacity(0.05),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
                                   ),
-                                  child: const Icon(
-                                    Icons.apartment,
-                                    color: AppColors.darkGreen,
-                                    size: 18,
-                                  ),
-                                ),
-
-                                const SizedBox(width: 12),
-
-                                /// Department Name
-                                Expanded(
-                                  child: Text(
-                                    departments[index].departmentName,
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-
-                                /// Delete Button
-                                GestureDetector(
-                                  onTap: () async {
-                                    if (!isEditing) return;
-
-                                    final dept = departments[index];
-
-                                    if (dept.id != null) {
-                                      await deleteDepartments(dept.id!);
-                                    }
-
-                                    setState(() {
-                                      departments.removeAt(index);
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  /// Icon
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: Colors.red.withOpacity(0.1),
+                                      color: AppColors.darkGreen.withOpacity(
+                                        0.1,
+                                      ),
                                       shape: BoxShape.circle,
                                     ),
-                                    child: Icon(
-                                      Icons.delete,
-                                      color: !isEditing
-                                          ? AppColors.grey
-                                          : AppColors.red,
+                                    child: const Icon(
+                                      Icons.apartment,
+                                      color: AppColors.darkGreen,
                                       size: 18,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+
+                                  const SizedBox(width: 12),
+
+                                  /// Department Name
+                                  Expanded(
+                                    child: Text(
+                                      departments[index].departmentName,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+
+                                  /// Delete Button
+                                  GestureDetector(
+                                    onTap: () async {
+                                      if (!isEditing) return;
+
+                                      final dept = departments[index];
+
+                                      if (dept.id != null) {
+                                        await deleteDepartments(dept.id!);
+                                      }
+
+                                      setState(() {
+                                        departments.removeAt(index);
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withOpacity(0.1),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.delete,
+                                        color: !isEditing
+                                            ? AppColors.grey
+                                            : AppColors.red,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: CustomElevatedButton(
+                  text: widget.customer == null
+                      ? "Save Customer"
+                      : (isEditing ? "Update Customer" : "Edit Customer"),
+                  backgroundColor: widget.customer != null && !isEditing
+                      ? AppColors.orange
+                      : AppColors.darkGreen,
+                  onPressed: () {
+                    if (widget.customer != null && !isEditing) {
+                      setState(() {
+                        isEditing = true;
+                      });
+                    } else {
+                      if (_formKey.currentState!.validate()) {
+                        saveCustomer();
+                      }
+                    }
+                  },
+                ),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: CustomElevatedButton(
+                  text: "Cancel",
+                  backgroundColor: AppColors.red,
+                  onPressed: () {
+                    if (widget.onSaved != null) {
+                      widget.onSaved!();
+                    }
+                  },
                 ),
               ),
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16),
-        child: CustomElevatedButton(
-          text: widget.customer == null
-              ? "Save Customer"
-              : (isEditing ? "Update Customer" : "Edit Customer"),
-          backgroundColor: widget.customer != null && !isEditing
-              ? AppColors.orange
-              : AppColors.darkGreen,
-          onPressed: () {
-            if (widget.customer != null && !isEditing) {
-              setState(() {
-                isEditing = true;
-              });
-            } else {
-              if (_formKey.currentState!.validate()) {
-                saveCustomer();
-              }
-            }
-          },
-        ),
-      ),
+      ],
     );
+    if (isAdmin) {
+      return Material(color: const Color(0xffF4F7FB), child: content);
+    } else {
+      return Scaffold(backgroundColor: const Color(0xffF4F7FB), body: content);
+    }
   }
 }

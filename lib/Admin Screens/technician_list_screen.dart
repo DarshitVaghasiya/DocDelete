@@ -1,18 +1,22 @@
 import 'dart:convert';
-
-import 'package:doc_delete/Admin%20Screens/add_technician_screen.dart';
 import 'package:doc_delete/Models/technician_model.dart';
 import 'package:doc_delete/Widgets/confirm_dialog.dart';
 import 'package:doc_delete/Widgets/custom_appbar.dart';
 import 'package:doc_delete/Widgets/custom_iconbutton.dart';
-import 'package:doc_delete/Widgets/custom_refresh.dart';
 import 'package:doc_delete/config/api_urls.dart';
 import 'package:doc_delete/utils/session_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class TechnicianListScreen extends StatefulWidget {
-  const TechnicianListScreen({super.key});
+  final VoidCallback? onAddPressed;
+  final Function(TechnicianModel)? onEditPressed;
+
+  const TechnicianListScreen({
+    super.key,
+    this.onAddPressed,
+    this.onEditPressed,
+  });
 
   @override
   State<TechnicianListScreen> createState() => _TechnicianListScreenState();
@@ -86,249 +90,227 @@ class _TechnicianListScreenState extends State<TechnicianListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xffF4F7FB),
-      appBar: CustomAppBar(
-        title: "Technician List",
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 15),
-            child: CustomIconButton(
-              icon: Icons.add,
-              backgroundColor: AppColors.white,
-              textColor: AppColors.darkGreen,
-              iconSize: 25,
-              padding: const EdgeInsets.all(10),
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AddTechnicianScreen(),
-                  ),
-                );
-
-                if (result == true) {
-                  loadTechnicians();
-                }
-              },
+    return Column(
+      children: [
+        CustomAppBar(
+          title: "Technician List",
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 15),
+              child: CustomIconButton(
+                icon: Icons.add,
+                backgroundColor: AppColors.white,
+                textColor: AppColors.darkGreen,
+                iconSize: 25,
+                padding: const EdgeInsets.all(10),
+                onTap: () {
+                  if (widget.onAddPressed != null) {
+                    widget.onAddPressed!();
+                  }
+                },
+              ),
             ),
-          ),
-        ],
-      ),
-      body: CustomRefresh(
-        onRefresh: loadTechnicians,
-        child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(color: AppColors.darkGreen),
-              )
-            : technician.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.engineering,
-                      size: 60,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      "No Technicians Found",
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey.shade600,
+          ],
+        ),
+        Expanded(
+          child: isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(color: AppColors.darkGreen),
+                )
+              : technician.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.engineering,
+                        size: 60,
+                        color: Colors.grey.shade400,
                       ),
-                    ),
-                  ],
-                ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: technician.length,
-                itemBuilder: (context, index) {
-                  final tech = technician[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                      const SizedBox(height: 10),
+                      Text(
+                        "No Technicians Found",
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey.shade600,
                         ),
-                      ],
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () async {
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                AddTechnicianScreen(technician: tech),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: technician.length,
+                  itemBuilder: (context, index) {
+                    final tech = technician[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
                           ),
-                        );
-
-                        if (result == true) {
-                          loadTechnicians();
-                        }
-                      },
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          /// 🔹 Top Row
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 26,
-                                backgroundColor: AppColors.darkGreen,
-                                child: Text(
-                                  tech.name.isNotEmpty
-                                      ? tech.name[0].toUpperCase()
-                                      : "?",
-                                  style: const TextStyle(
-                                    color: AppColors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
+                        ],
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          if (widget.onEditPressed != null) {
+                            widget.onEditPressed!(tech);
+                          }
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            /// 🔹 Top Row
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 26,
+                                  backgroundColor: AppColors.darkGreen,
+                                  child: Text(
+                                    tech.name.isNotEmpty
+                                        ? tech.name[0].toUpperCase()
+                                        : "?",
+                                    style: const TextStyle(
+                                      color: AppColors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                    ),
                                   ),
                                 ),
-                              ),
 
-                              const SizedBox(width: 12),
+                                const SizedBox(width: 12),
 
-                              /// Name + Email
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                /// Name + Email
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        tech.name,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        tech.email,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.grey.shade600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+
+                                /// Actions
+                                Row(
                                   children: [
-                                    Text(
-                                      tech.name,
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
+                                    GestureDetector(
+                                      onTap: () {
+                                        if (widget.onEditPressed != null) {
+                                          widget.onEditPressed!(tech);
+                                        }
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.edit,
+                                          size: 18,
+                                          color: AppColors.blue,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      tech.email,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey.shade600,
+                                    const SizedBox(width: 10),
+                                    GestureDetector(
+                                      onTap: () {
+                                        ConfirmDialog.show(
+                                          context: context,
+                                          title: "Delete Technician",
+                                          message:
+                                              "Are you sure you want to delete ${tech.name}?",
+                                          confirmText: "Delete",
+                                          confirmColor: AppColors.red,
+                                          onConfirm: () =>
+                                              deleteTechnician(tech.id!),
+                                        );
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.withOpacity(0.1),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete,
+                                          size: 18,
+                                          color: AppColors.red,
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
+                              ],
+                            ),
 
-                              /// Actions
-                              Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () async {
-                                      final result = await Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              AddTechnicianScreen(
-                                                technician: tech,
-                                              ),
-                                        ),
-                                      );
+                            const SizedBox(height: 12),
 
-                                      if (result == true) {
-                                        loadTechnicians();
-                                      }
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.edit,
-                                        size: 18,
-                                        color: AppColors.blue,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  GestureDetector(
-                                    onTap: () {
-                                      ConfirmDialog.show(
-                                        context: context,
-                                        title: "Delete Technician",
-                                        message:
-                                            "Are you sure you want to delete ${tech.name}?",
-                                        confirmText: "Delete",
-                                        confirmColor: AppColors.red,
-                                        onConfirm: () =>
-                                            deleteTechnician(tech.id!),
-                                      );
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.withOpacity(0.1),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.delete,
-                                        size: 18,
-                                        color: AppColors.red,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          /// 🔹 Address
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.location_on,
-                                size: 16,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  AddressFormatter.format(tech.address),
-                                  style: TextStyle(color: Colors.grey.shade700),
+                            /// 🔹 Address
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  size: 16,
+                                  color: Colors.grey.shade600,
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    AddressFormatter.format(tech.address),
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
 
-                          const SizedBox(height: 6),
+                            const SizedBox(height: 6),
 
-                          /// 🔹 Phone
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.phone,
-                                size: 16,
-                                color: Colors.grey.shade600,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(tech.phone),
-                            ],
-                          ),
-                        ],
+                            /// 🔹 Phone
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.phone,
+                                  size: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(tech.phone),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
-              ),
-      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

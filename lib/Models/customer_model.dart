@@ -9,7 +9,7 @@ class CustomerModel {
   String phone;
   String email;
 
-  List<DepartmentModel1> departments; // 🔥 NEW
+  List<DepartmentModel> departments; // 🔥 NEW
 
   CustomerModel({
     this.id,
@@ -38,7 +38,7 @@ class CustomerModel {
       email: json["email"]?.toString() ?? "",
 
       departments: (json["departments"] as List? ?? [])
-          .map((e) => DepartmentModel1.fromJson(e))
+          .map((e) => DepartmentModel.fromJson(e))
           .toList(),
     );
   }

@@ -67,12 +67,15 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
     setState(() => loggedUser = user);
   }
 
-  @override
-  void dispose() {
-    if (_url != null) {
-      html.Url.revokeObjectUrl(_url!);
-    }
-    super.dispose();
+  void downloadPdf() {
+    final blob = html.Blob([widget.bytes], 'application/pdf');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+
+    final anchor = html.AnchorElement(href: url)
+      ..setAttribute("download", "manifest.pdf")
+      ..click();
+
+    html.Url.revokeObjectUrl(url);
   }
 
   Future<void> sharePdf() async {
@@ -114,6 +117,14 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
   }
 
   @override
+  void dispose() {
+    if (_url != null) {
+      html.Url.revokeObjectUrl(_url!);
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xffF4F7FB),
@@ -138,18 +149,33 @@ class _WebPdfViewerScreenState extends State<WebPdfViewerScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    if (isAdmin) // 🔥 ONLY ADMIN CAN SEE
+                    if (isAdmin &&
+                        widget.customerEmail != null &&
+                        widget.customerEmail!.isNotEmpty)
                       Expanded(
                         child: CustomIconButton(
                           label: "Send to E-mail",
                           backgroundColor: AppColors.darkGreen,
+                          borderColor: AppColors.darkGreen,
                           textColor: Colors.white,
                           onTap: isLoading ? null : sharePdf,
                         ),
                       ),
 
-                    if (isAdmin) const SizedBox(width: 10),
-
+                    if (isAdmin &&
+                        widget.customerEmail != null &&
+                        widget.customerEmail!.isNotEmpty)
+                      const SizedBox(width: 10),
+                    Expanded(
+                      child: CustomIconButton(
+                        label: "Download PDF",
+                        borderColor: AppColors.blue.withOpacity(0.01),
+                        backgroundColor: AppColors.blue.withOpacity(0.2),
+                        textColor: AppColors.blue,
+                        onTap: downloadPdf,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: CustomIconButton(
                         label: "Close",

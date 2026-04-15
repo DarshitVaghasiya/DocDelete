@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'package:doc_delete/Models/department_model.dart';
 import 'package:doc_delete/Models/get_all_manifest_model.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -13,13 +12,19 @@ ByteData? _fontData;
 ByteData? _boldFontData;
 ByteData? _logoData;
 
+/// ─── LOAD ASSETS (એક વાર) ───
+Future<void> _loadAssets() async {
+  _fontData ??= await rootBundle.load("assets/Fonts/Roboto-Regular.ttf");
+  _boldFontData ??= await rootBundle.load("assets/Fonts/Roboto-Bold.ttf");
+  _logoData ??= await rootBundle.load("assets/images/DocDelete.png");
+}
+
+/// 🔥 SINGLE manifest PDF
 Future<Uint8List> generateManifestPdf(
   GetAllManifestModel manifest, {
   String technicianName = "",
 }) async {
-  _fontData ??= await rootBundle.load("assets/Fonts/Roboto-Regular.ttf");
-  _boldFontData ??= await rootBundle.load("assets/Fonts/Roboto-Bold.ttf");
-  _logoData ??= await rootBundle.load("assets/images/DocDelete.png");
+  await _loadAssets();
 
   final args = {
     'manifest': manifest,
@@ -36,7 +41,36 @@ Future<Uint8List> generateManifestPdf(
   }
 }
 
-Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
+/// 🔥 ALL manifests → ONE single PDF
+Future<Uint8List> generateAllManifestsPdf(
+  List<GetAllManifestModel> manifests, {
+  required List<String> technicianNames,
+}) async {
+  await _loadAssets();
+
+  final font = pw.Font.ttf(_fontData!);
+  final boldFont = pw.Font.ttf(_boldFontData!);
+  final logoImage = pw.MemoryImage(_logoData!.buffer.asUint8List());
+
+  final pdf = pw.Document(
+    theme: pw.ThemeData.withFont(base: font, bold: boldFont),
+  );
+
+  for (int i = 0; i < manifests.length; i++) {
+    /// 🔥 દરેક manifest ના pages same document માં add
+    _addManifestPages(
+      pdf: pdf,
+      manifest: manifests[i],
+      technicianName: technicianNames[i],
+      logoImage: logoImage,
+    );
+  }
+
+  return pdf.save();
+}
+
+/// ─── ISOLATE ENTRY (single manifest) ───
+Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) {
   final GetAllManifestModel manifest = args['manifest'];
   final ByteData fontData = args['fontData'];
   final ByteData boldFontData = args['boldFontData'];
@@ -50,6 +84,24 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
   final pdf = pw.Document(
     theme: pw.ThemeData.withFont(base: font, bold: boldFont),
   );
+
+  _addManifestPages(
+    pdf: pdf,
+    manifest: manifest,
+    technicianName: technicianName,
+    logoImage: logoImage,
+  );
+
+  return pdf.save();
+}
+
+/// 🔥 SHARED CORE — document માં pages add કરો
+void _addManifestPages({
+  required pw.Document pdf,
+  required GetAllManifestModel manifest,
+  required String technicianName,
+  required pw.MemoryImage logoImage,
+}) {
   final unitList = manifest.units;
   final minRows = 7;
   final totalRows = unitList.length > minRows ? unitList.length : minRows;
@@ -58,22 +110,16 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
     if (base64String == null || base64String.isEmpty) {
       return pw.SizedBox(width: 120);
     }
-
     try {
       final cleanedBase64 = base64String.contains(',')
           ? base64String.split(',').last
           : base64String;
-
       final bytes = base64Decode(cleanedBase64);
-
       return pw.Container(
         width: 120,
         height: 20,
         alignment: pw.Alignment.center,
-        child: pw.Image(
-          pw.MemoryImage(bytes),
-          fit: pw.BoxFit.contain, // 🔥 important
-        ),
+        child: pw.Image(pw.MemoryImage(bytes), fit: pw.BoxFit.contain),
       );
     } catch (e) {
       return pw.SizedBox(width: 120, height: 40);
@@ -84,7 +130,7 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
   final technicianSignWidget = buildSignatureSync(manifest.technicianSign);
   final adminSignWidget = buildSignatureSync(manifest.adminSign);
 
-  String getDepartmentName(int id, List<DepartmentModel1> departments) {
+  String getDepartmentName(int id, List<DepartmentModel> departments) {
     try {
       return departments.firstWhere((d) => d.id == id).departmentName;
     } catch (e) {
@@ -94,33 +140,18 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
 
   String format(String address) {
     if (address.isEmpty) return "";
-
     List<String> parts = address
         .split(',')
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
-
     if (parts.length <= 1) return address;
-
-    // ✅ Line 3 → City, PR ZIP (છેલ્લા 2 parts)
     String line3 = "${parts[parts.length - 2]}, ${parts[parts.length - 1]}";
-
-    // ✅ બાકી parts Line 1 અને Line 2 માં વહેંચો
     List<String> remaining = parts.sublist(0, parts.length - 2);
-
     if (remaining.isEmpty) return line3;
-
-    if (remaining.length == 1) {
-      // ✅ ફક્ત 1 part → Line 1 + Line 3
-      return "${remaining[0]},\n$line3";
-    }
-
-    // ✅ Line 1 → first part
+    if (remaining.length == 1) return "${remaining[0]},\n$line3";
     String line1 = remaining[0];
-    // ✅ Line 2 → ALL parts
     String line2 = remaining.sublist(1).join(', ');
-
     return "$line1,\n$line2,\n$line3";
   }
 
@@ -277,18 +308,14 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
                 pw.Container(
                   padding: const pw.EdgeInsets.all(5),
                   child: pw.Row(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start, // 🔥 FIX
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
                         "f. Signature:",
                         style: pw.TextStyle(fontSize: 8),
                       ),
                       pw.SizedBox(width: 5),
-
-                      pw.Expanded(
-                        // 🔥 important
-                        child: pw.Center(child: customerSignWidget),
-                      ),
+                      pw.Expanded(child: pw.Center(child: customerSignWidget)),
                     ],
                   ),
                 ),
@@ -320,9 +347,8 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
                         "b. Signature:",
                         style: pw.TextStyle(fontSize: 8),
                       ),
-                      pw.SizedBox(width: 5), // ✅ spacing
+                      pw.SizedBox(width: 5),
                       pw.Expanded(
-                        // 🔥 important
                         child: pw.Center(child: technicianSignWidget),
                       ),
                     ],
@@ -394,10 +420,7 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
                         style: pw.TextStyle(fontSize: 8),
                       ),
                       pw.SizedBox(width: 5),
-                      pw.Expanded(
-                        // 🔥 important
-                        child: pw.Center(child: adminSignWidget),
-                      ),
+                      pw.Expanded(child: pw.Center(child: adminSignWidget)),
                     ],
                   ),
                 ),
@@ -415,11 +438,9 @@ Future<Uint8List> _buildPdfInIsolate(Map<String, dynamic> args) async {
       ],
     ),
   );
-
-  return pdf.save();
 }
 
-// ✅ Isolate માટે હેલ્પર ફંક્શન્સ
+// ─── HELPER WIDGETS (same as before) ───
 pw.Widget _sectionTitle(String text) {
   return pw.Padding(
     padding: const pw.EdgeInsets.only(bottom: 4),
@@ -427,28 +448,10 @@ pw.Widget _sectionTitle(String text) {
   );
 }
 
-pw.Widget _buildCell(String text) {
-  return pw.Container(
-    height: 28,
-    padding: const pw.EdgeInsets.all(4),
-    alignment: pw.Alignment.center,
-    decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5)),
-    child: pw.Text(
-      text,
-      style: pw.TextStyle(fontSize: 9),
-      textAlign: pw.TextAlign.center,
-      softWrap: true,
-    ),
-  );
-}
-
 pw.Widget _buildInfoCell(String text) {
   return pw.Container(
     constraints: const pw.BoxConstraints(minHeight: 25),
-    padding: const pw.EdgeInsets.symmetric(
-      horizontal: 4,
-      vertical: 4,
-    ), // ✅ uniform padding
+    padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 4),
     alignment: pw.Alignment.center,
     child: pw.Text(
       text,

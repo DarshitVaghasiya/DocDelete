@@ -4,13 +4,13 @@ class ManifestModel {
   final int? id;
   final int? technicianId;
   final int? customerId;
-  final String? customerName; // 👈 ADD THIS
+  final String? customerName;
   final String serviceDate;
   final List<ServiceItemModel> serviceItems;
-  final List<String> images;
+  final List<Map<String, dynamic>> images;
   final String? customerSign;
   final String? technicianSign;
-  final String? adminSign;
+  final bool? adminCompleted;
 
   ManifestModel({
     this.id,
@@ -22,7 +22,7 @@ class ManifestModel {
     required this.images,
     required this.customerSign,
     required this.technicianSign,
-    this.adminSign,
+    this.adminCompleted,
   });
 
   Map<String, dynamic> toJson() {
@@ -33,10 +33,10 @@ class ManifestModel {
       "customer_name": customerName,
       "service_date": serviceDate,
       "service_items": serviceItems.map((e) => e.toJson()).toList(),
-      "image_name": images,
+      "images": images,
       "customer_sign": customerSign,
       "technician_sign": technicianSign,
-      "admin_sign": adminSign,
+      if (adminCompleted != null) "admin_completed": adminCompleted,
     };
   }
 }
